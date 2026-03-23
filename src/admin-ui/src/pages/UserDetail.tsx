@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getUser, listApiKeys, createApiKey, updateApiKey, deleteApiKey } from "@/lib/api";
+import { getUser, listApiKeys, createApiKey, updateApiKey, deleteApiKey, getUserUsage, regenerateApiKey } from "@/lib/api";
 import type { User, ApiKey } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,17 +14,37 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Copy, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Copy, Trash2, Pencil } from "lucide-react";
 
 export default function UserDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [keys, setKeys] = useState<ApiKey[]>([]);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", quota: "0" });
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", quota: "0" });
   const [newKey, setNewKey] = useState("");
+  const [usage, setUsage] = useState<{ toolName: string; count: number; totalCost: number }[]>([]);
+  const [usageMonth, setUsageMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  // Edit dialog state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editKey, setEditKey] = useState<ApiKey | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    quota: "0",
+    balance: "-1",
+    allowedTools: "",
+    status: "active" as "active" | "disabled",
+  });
+  const [regenerate, setRegenerate] = useState(false);
+  const [regeneratedKey, setRegeneratedKey] = useState("");
 
   const loadUser = () => {
     if (!id) return;
@@ -32,15 +52,20 @@ export default function UserDetail() {
     listApiKeys(id).then((r) => setKeys(r.data));
   };
 
-  useEffect(() => { loadUser(); }, [id]);
+  const loadUsage = (month?: string) => {
+    if (!id) return;
+    getUserUsage(id, { billingMonth: month ?? usageMonth }).then((r) => setUsage(r.data));
+  };
+
+  useEffect(() => { loadUser(); loadUsage(); }, [id]);
 
   const handleCreateKey = async () => {
     if (!id) return;
     try {
-      const res = await createApiKey(id, { name: form.name, quota: Number(form.quota) });
+      const res = await createApiKey(id, { name: createForm.name, quota: Number(createForm.quota) });
       setNewKey(res.data.key || "");
       toast.success("API Key created");
-      setForm({ name: "", quota: "0" });
+      setCreateForm({ name: "", quota: "0" });
       loadUser();
     } catch {
       toast.error("Failed to create API Key");
@@ -64,6 +89,49 @@ export default function UserDetail() {
     await updateApiKey(key.id, { status: newStatus });
     toast.success(`API Key ${newStatus}`);
     loadUser();
+  };
+
+  const openEditDialog = (key: ApiKey) => {
+    setEditKey(key);
+    setEditForm({
+      name: key.name,
+      quota: String(key.quota),
+      balance: String(key.balance),
+      allowedTools: key.allowedTools ? key.allowedTools.join(", ") : "",
+      status: key.status,
+    });
+    setRegenerate(false);
+    setRegeneratedKey("");
+    setEditOpen(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editKey) return;
+    try {
+      const allowedToolsArr = editForm.allowedTools.trim()
+        ? editForm.allowedTools.split(",").map((s) => s.trim()).filter(Boolean)
+        : null;
+
+      await updateApiKey(editKey.id, {
+        name: editForm.name,
+        quota: Number(editForm.quota),
+        balance: Number(editForm.balance),
+        allowedTools: allowedToolsArr,
+        status: editForm.status,
+      });
+
+      if (regenerate) {
+        const res = await regenerateApiKey(editKey.id);
+        setRegeneratedKey(res.data.key);
+        toast.success("API Key updated and regenerated");
+      } else {
+        toast.success("API Key updated");
+        setEditOpen(false);
+      }
+      loadUser();
+    } catch {
+      toast.error("Failed to update API Key");
+    }
   };
 
   if (!user) return <div className="text-muted-foreground">Loading...</div>;
@@ -91,9 +159,59 @@ export default function UserDetail() {
         </CardContent>
       </Card>
 
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Tool Usage</CardTitle>
+            <div className="flex items-center gap-2">
+              <Input
+                type="month"
+                value={usageMonth}
+                className="w-40"
+                onChange={(e) => {
+                  setUsageMonth(e.target.value);
+                  loadUsage(e.target.value);
+                }}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {usage.length > 0 ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tool Name</TableHead>
+                    <TableHead className="text-right">Call Count</TableHead>
+                    <TableHead className="text-right">Total Cost</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {usage.map((u) => (
+                    <TableRow key={u.toolName}>
+                      <TableCell>{u.toolName}</TableCell>
+                      <TableCell className="text-right">{u.count}</TableCell>
+                      <TableCell className="text-right">{u.totalCost.toFixed(4)}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="font-semibold bg-muted/50">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right">{usage.reduce((s, u) => s + u.count, 0)}</TableCell>
+                    <TableCell className="text-right">{usage.reduce((s, u) => s + u.totalCost, 0).toFixed(4)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No usage data for this month</p>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">API Keys</h3>
-        <Button onClick={() => setOpen(true)}>
+        <Button onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4 mr-2" /> New API Key
         </Button>
       </div>
@@ -120,6 +238,7 @@ export default function UserDetail() {
               <TableHead>Name</TableHead>
               <TableHead>Prefix</TableHead>
               <TableHead>Quota</TableHead>
+              <TableHead>Balance</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Expires</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -131,6 +250,7 @@ export default function UserDetail() {
                 <TableCell className="font-medium">{k.name}</TableCell>
                 <TableCell><code className="text-xs">{k.keyPrefix}...</code></TableCell>
                 <TableCell>{k.quota === 0 ? "Unlimited" : k.quota}</TableCell>
+                <TableCell>{k.balance < 0 ? "Unlimited" : k.balance.toFixed(4)}</TableCell>
                 <TableCell>
                   <Badge variant={k.status === "active" ? "default" : "secondary"}>
                     {k.status}
@@ -140,6 +260,9 @@ export default function UserDetail() {
                   {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : "Never"}
                 </TableCell>
                 <TableCell className="text-right space-x-2">
+                  <Button size="sm" variant="ghost" onClick={() => openEditDialog(k)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   <Switch
                     checked={k.status === "active"}
                     onCheckedChange={() => toggleKeyStatus(k)}
@@ -152,7 +275,7 @@ export default function UserDetail() {
             ))}
             {keys.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                   No API Keys
                 </TableCell>
               </TableRow>
@@ -161,7 +284,8 @@ export default function UserDetail() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      {/* Create API Key Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create API Key</DialogTitle>
@@ -169,17 +293,90 @@ export default function UserDetail() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Name *</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <Input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>Quota (0 = unlimited)</Label>
-              <Input type="number" value={form.quota} onChange={(e) => setForm({ ...form, quota: e.target.value })} />
+              <Input type="number" value={createForm.quota} onChange={(e) => setCreateForm({ ...createForm, quota: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateKey} disabled={!form.name}>Create</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateKey} disabled={!createForm.name}>Create</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit API Key Dialog */}
+      <Dialog open={editOpen} onOpenChange={(v) => { if (!v) { setEditOpen(false); setRegeneratedKey(""); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit API Key</DialogTitle>
+          </DialogHeader>
+          {regeneratedKey ? (
+            <div className="space-y-4">
+              <p className="text-sm font-medium">New API Key (copy now, it won't be shown again):</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-sm bg-muted p-2 rounded border break-all">{regeneratedKey}</code>
+                <Button size="sm" variant="outline" onClick={() => handleCopy(regeneratedKey)}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => { setEditOpen(false); setRegeneratedKey(""); }}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Quota (0 = unlimited)</Label>
+                    <Input type="number" value={editForm.quota} onChange={(e) => setEditForm({ ...editForm, quota: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Balance (-1 = unlimited)</Label>
+                    <Input type="number" step="0.0001" value={editForm.balance} onChange={(e) => setEditForm({ ...editForm, balance: e.target.value })} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Allowed Tools (comma-separated, empty = all)</Label>
+                  <Textarea
+                    rows={3}
+                    placeholder="provider__tool1, provider__tool2"
+                    value={editForm.allowedTools}
+                    onChange={(e) => setEditForm({ ...editForm, allowedTools: e.target.value })}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label>Status</Label>
+                  <Switch
+                    checked={editForm.status === "active"}
+                    onCheckedChange={(v) => setEditForm({ ...editForm, status: v ? "active" : "disabled" })}
+                  />
+                  <span className="text-sm text-muted-foreground">{editForm.status}</span>
+                </div>
+                <div className="flex items-center gap-2 pt-2 border-t">
+                  <Checkbox
+                    id="regenerate"
+                    checked={regenerate}
+                    onCheckedChange={(v) => setRegenerate(!!v)}
+                  />
+                  <Label htmlFor="regenerate" className="text-sm font-normal cursor-pointer">
+                    Regenerate API Key (will invalidate the current key)
+                  </Label>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                <Button onClick={handleEditSubmit}>Save</Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

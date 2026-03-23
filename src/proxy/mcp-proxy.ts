@@ -438,6 +438,20 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
           throw new Error(`Monthly quota exceeded (${usageCount}/${quota})`);
         }
       }
+
+      // Check allowedTools
+      const allowedTools = authContext.apiKeyRecord.allowedTools;
+      if (allowedTools && allowedTools.length > 0 && !allowedTools.includes(name)) {
+        logger.warn(`Tool ${name} not in allowedTools for API key ${apiKeyId}`);
+        throw new Error(`Tool not allowed: ${name}`);
+      }
+
+      // Check balance
+      const balance = authContext.apiKeyRecord.balance;
+      if (balance >= 0 && balance <= 0) {
+        logger.warn(`Insufficient balance for API key ${apiKeyId}: ${balance}`);
+        throw new Error(`Insufficient balance (${balance})`);
+      }
     }
 
     // Call hook before tool execution
@@ -500,21 +514,24 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
         if (gStorage && authContext) {
           const currentMonth = new Date().toISOString().slice(0, 7);
           const requestSummary = JSON.stringify(args ?? {}).substring(0, 500);
+          const profileKey = selectedClient.profileKey ?? null;
 
-          // Insert request log
-          gStorage.insertRequestLog({
-            userId,
-            apiKeyId,
-            method: "tools/call",
-            toolName: name,
-            requestSummary,
-            responseStatus: "success",
-            responseTimeMs,
-            errorMessage: null,
-          }).catch((e: any) => logger.error(`Failed to write request log: ${e.message}`));
-
-          // Insert usage record for billing
+          // Insert usage record for billing + request log
           gStorage.getToolPrice(name).then((unitPrice) => {
+            // Insert request log with cost
+            gStorage!.insertRequestLog({
+              userId,
+              apiKeyId,
+              method: "tools/call",
+              toolName: name,
+              requestSummary,
+              responseStatus: "success",
+              responseTimeMs,
+              errorMessage: null,
+              cost: unitPrice,
+              profileKey,
+            }).catch((e: any) => logger.error(`Failed to write request log: ${e.message}`));
+
             gStorage!.insertUsageRecord({
               userId,
               apiKeyId,
@@ -522,6 +539,12 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
               unitPrice,
               billingMonth: currentMonth,
             }).catch((e: any) => logger.error(`Failed to record usage: ${e.message}`));
+
+            // Deduct balance if applicable
+            if (unitPrice > 0 && authContext!.apiKeyRecord.balance > 0) {
+              gStorage!.deductBalance(apiKeyId, unitPrice)
+                .catch((e: any) => logger.error(`Failed to deduct balance: ${e.message}`));
+            }
           }).catch((e: any) => logger.error(`Failed to get tool price: ${e.message}`));
         }
 
@@ -545,6 +568,8 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
               responseStatus: "error",
               responseTimeMs,
               errorMessage: error.message,
+              cost: 0,
+              profileKey: selectedClient.profileKey ?? null,
             }).catch((e: any) => logger.error(`Failed to write request log: ${e.message}`));
           }
 
@@ -595,6 +620,8 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
         responseStatus: "error",
         responseTimeMs,
         errorMessage: lastError?.message ?? "Unknown error",
+        cost: 0,
+        profileKey: selectedClient.profileKey ?? null,
       }).catch((e: any) => logger.error(`Failed to write request log: ${e.message}`));
     }
 

@@ -18,7 +18,7 @@ export function createApiKeysRouter(storage: IStorage) {
     create: async (req: Request, res: Response): Promise<void> => {
       try {
         const { userId } = req.params;
-        const { name, quota, expiresAt, status } = req.body;
+        const { name, quota, expiresAt, status, allowedTools, balance } = req.body;
 
         if (!name) {
           res.status(400).json({ error: "Name is required" });
@@ -41,6 +41,8 @@ export function createApiKeysRouter(storage: IStorage) {
           keyHash: hash,
           keyPrefix: prefix,
           quota: quota ?? 0,
+          allowedTools: allowedTools ?? null,
+          balance: balance ?? -1,
           status,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
         };
@@ -97,7 +99,7 @@ export function createApiKeysRouter(storage: IStorage) {
     update: async (req: Request, res: Response): Promise<void> => {
       try {
         const { id } = req.params;
-        const { name, quota, status, expiresAt } = req.body;
+        const { name, quota, status, expiresAt, allowedTools, balance } = req.body;
 
         const existing = await storage.getApiKey(id);
         if (!existing) {
@@ -111,11 +113,13 @@ export function createApiKeysRouter(storage: IStorage) {
           return;
         }
 
-        const data: Partial<Pick<ApiKey, "name" | "quota" | "status" | "expiresAt">> = {};
+        const data: Partial<Pick<ApiKey, "name" | "quota" | "status" | "expiresAt" | "allowedTools" | "balance">> = {};
         if (name !== undefined) data.name = name;
         if (quota !== undefined) data.quota = quota;
         if (status !== undefined) data.status = status;
         if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
+        if (allowedTools !== undefined) data.allowedTools = allowedTools;
+        if (balance !== undefined) data.balance = balance;
 
         const apiKey = await storage.updateApiKey(id, data);
         logger.info(`API Key updated: ${apiKey.id}`);
@@ -124,6 +128,27 @@ export function createApiKeysRouter(storage: IStorage) {
         res.json(safeKey);
       } catch (e: any) {
         logger.error(`Failed to update API key: ${e.message}`);
+        res.status(500).json({ error: e.message });
+      }
+    },
+
+    // POST /admin/api-keys/:id/regenerate - Regenerate API key
+    regenerate: async (req: Request, res: Response): Promise<void> => {
+      try {
+        const { id } = req.params;
+        const existing = await storage.getApiKey(id);
+        if (!existing) {
+          res.status(404).json({ error: "API key not found" });
+          return;
+        }
+
+        const { key, hash, prefix } = generateApiKey();
+        await storage.regenerateApiKey(id, hash, prefix);
+        logger.info(`API Key regenerated: ${id}`);
+
+        res.json({ key });
+      } catch (e: any) {
+        logger.error(`Failed to regenerate API key: ${e.message}`);
         res.status(500).json({ error: e.message });
       }
     },
