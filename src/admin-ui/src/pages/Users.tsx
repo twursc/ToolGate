@@ -14,12 +14,17 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", note: "" });
+
+  // Edit dialog
+  const [editOpen, setEditOpen] = useState(false);
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState({ username: "", email: "", status: "active" as "active" | "disabled" });
 
   const load = () => listUsers().then((r) => setUsers(r.data));
 
@@ -43,6 +48,32 @@ export default function UsersPage() {
     await updateUser(user.id, { status: newStatus });
     toast.success(`User ${newStatus}`);
     load();
+  };
+
+  const openEditDialog = (user: User) => {
+    setEditUser(user);
+    setEditForm({
+      username: user.username,
+      email: user.email || "",
+      status: user.status,
+    });
+    setEditOpen(true);
+  };
+
+  const handleEdit = async () => {
+    if (!editUser) return;
+    try {
+      await updateUser(editUser.id, {
+        username: editForm.username,
+        email: editForm.email || null,
+        status: editForm.status,
+      });
+      toast.success("User updated");
+      setEditOpen(false);
+      load();
+    } catch {
+      toast.error("Failed to update user");
+    }
   };
 
   return (
@@ -82,7 +113,10 @@ export default function UsersPage() {
                 <TableCell className="text-muted-foreground">
                   {new Date(u.createdAt).toLocaleDateString()}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-right space-x-2">
+                  <Button size="sm" variant="ghost" onClick={() => openEditDialog(u)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   <Switch
                     checked={u.status === "active"}
                     onCheckedChange={() => toggleStatus(u)}
@@ -101,6 +135,7 @@ export default function UsersPage() {
         </Table>
       </div>
 
+      {/* Create User Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -123,6 +158,37 @@ export default function UsersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={!form.username}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Username</Label>
+              <Input value={editForm.username} onChange={(e) => setEditForm({ ...editForm, username: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label>Active</Label>
+              <Switch
+                checked={editForm.status === "active"}
+                onCheckedChange={(v) => setEditForm({ ...editForm, status: v ? "active" : "disabled" })}
+              />
+              <span className="text-sm text-muted-foreground">{editForm.status}</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={!editForm.username}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   listProviders,
   createProvider,
@@ -8,9 +9,10 @@ import {
   updateProfile,
   deleteProfile,
   reloadProviders,
-  getProviderTools,
+  getUsageStats,
+  getProfileStats,
 } from "@/lib/api";
-import type { McpProvider, McpProfile, ToolSchema } from "@/lib/types";
+import type { McpProvider, McpProfile, UsageStats } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,21 +41,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
   Alert,
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
@@ -62,9 +53,6 @@ import {
   Pencil,
   Trash2,
   AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  Eye,
 } from "lucide-react";
 import { KeyValueEditor } from "@/components/KeyValueEditor";
 
@@ -108,142 +96,12 @@ const emptyProfileForm: ProfileForm = {
   env: {},
 };
 
-// --- Schema Table Component ---
-
-function SchemaTable({ schema }: { schema: Record<string, unknown> }) {
-  const properties = (schema.properties ?? {}) as Record<
-    string,
-    { type?: string; description?: string; enum?: unknown[] }
-  >;
-  const required = (schema.required ?? []) as string[];
-
-  if (Object.keys(properties).length === 0) {
-    return <p className="text-sm text-muted-foreground">No parameters</p>;
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-[180px]">Field</TableHead>
-          <TableHead className="w-[120px]">Type</TableHead>
-          <TableHead>Description</TableHead>
-          <TableHead className="w-[80px]">Required</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {Object.entries(properties).map(([fieldName, prop]) => (
-          <TableRow key={fieldName}>
-            <TableCell className="font-mono text-sm">{fieldName}</TableCell>
-            <TableCell className="text-sm">
-              {prop.enum
-                ? `enum(${prop.enum.join(", ")})`
-                : prop.type ?? "any"}
-            </TableCell>
-            <TableCell className="text-sm text-muted-foreground">
-              {prop.description ?? "-"}
-            </TableCell>
-            <TableCell>
-              {required.includes(fieldName) ? (
-                <Badge variant="default" className="text-xs">
-                  Yes
-                </Badge>
-              ) : (
-                <span className="text-xs text-muted-foreground">No</span>
-              )}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-// --- Tool Schema Sheet ---
-
-function ToolSchemaSheet({
-  open,
-  onOpenChange,
-  providerKey,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  providerKey: string;
-}) {
-  const [tools, setTools] = useState<ToolSchema[]>([]);
-  const [expandedTool, setExpandedTool] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (open && providerKey) {
-      setLoading(true);
-      getProviderTools(providerKey)
-        .then((r) => setTools(r.data.tools ?? []))
-        .catch(() => toast.error("Failed to load tools"))
-        .finally(() => setLoading(false));
-    }
-  }, [open, providerKey]);
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Tools - {providerKey}</SheetTitle>
-        </SheetHeader>
-        <div className="mt-4 space-y-2">
-          {loading && (
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          )}
-          {!loading && tools.length === 0 && (
-            <p className="text-sm text-muted-foreground">No tools available</p>
-          )}
-          {tools.map((tool) => (
-            <Collapsible
-              key={tool.name}
-              open={expandedTool === tool.name}
-              onOpenChange={(isOpen) =>
-                setExpandedTool(isOpen ? tool.name : null)
-              }
-            >
-              <CollapsibleTrigger
-                className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer hover:bg-muted w-full text-left ${
-                  tool.hasMismatch ? "border border-destructive/50 bg-destructive/5" : "border"
-                }`}
-              >
-                {expandedTool === tool.name ? (
-                  <ChevronDown className="h-4 w-4 shrink-0" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0" />
-                )}
-                <span className="font-mono text-sm font-medium">
-                  {tool.name}
-                </span>
-                {tool.hasMismatch && (
-                  <Badge variant="destructive" className="text-xs ml-auto">
-                    Mismatch
-                  </Badge>
-                )}
-              </CollapsibleTrigger>
-              <CollapsibleContent className="px-3 py-2 border-x border-b rounded-b-md">
-                {tool.description && (
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {tool.description}
-                  </p>
-                )}
-                <SchemaTable schema={tool.inputSchema} />
-              </CollapsibleContent>
-            </Collapsible>
-          ))}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 // --- Main Page ---
 
 export default function ProvidersPage() {
   const [providers, setProviders] = useState<McpProvider[]>([]);
+  const [providerUsage, setProviderUsage] = useState<Record<string, { count: number; cost: number }>>({});
+  const [profileStatsMap, setProfileStatsMap] = useState<Record<string, Record<string, { count: number; cost: number }>>>({}); // providerKey -> profileKey -> stats
 
   // Provider dialog
   const [providerOpen, setProviderOpen] = useState(false);
@@ -265,11 +123,41 @@ export default function ProvidersPage() {
     ...emptyProfileForm,
   });
 
-  // Tool schema sheet
-  const [toolSheetOpen, setToolSheetOpen] = useState(false);
-  const [toolSheetProvider, setToolSheetProvider] = useState("");
-
-  const load = () => listProviders().then((r) => setProviders(r.data));
+  const load = async () => {
+    const res = await listProviders();
+    const provs: McpProvider[] = res.data;
+    setProviders(provs);
+    // Load usage counts per provider
+    const month = new Date();
+    const billingMonth = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
+    const usage: Record<string, { count: number; cost: number }> = {};
+    const pStats: Record<string, Record<string, { count: number; cost: number }>> = {};
+    await Promise.all(
+      provs.map(async (p) => {
+        try {
+          const r = await getUsageStats({ provider: p.key, billingMonth, limit: "1000" });
+          const stats: UsageStats[] = r.data.data;
+          const count = stats.reduce((s, u) => s + u.count, 0);
+          const cost = stats.reduce((s, u) => s + u.totalCost, 0);
+          usage[p.key] = { count, cost };
+        } catch {
+          usage[p.key] = { count: 0, cost: 0 };
+        }
+        try {
+          const r = await getProfileStats(p.key, { billingMonth });
+          const map: Record<string, { count: number; cost: number }> = {};
+          for (const s of r.data as { profileKey: string; count: number; totalCost: number }[]) {
+            map[s.profileKey] = { count: s.count, cost: s.totalCost };
+          }
+          pStats[p.key] = map;
+        } catch {
+          pStats[p.key] = {};
+        }
+      })
+    );
+    setProviderUsage(usage);
+    setProfileStatsMap(pStats);
+  };
 
   useEffect(() => {
     load();
@@ -430,13 +318,6 @@ export default function ProvidersPage() {
     }
   };
 
-  // --- Tool Schema ---
-
-  const openToolSheet = (providerKey: string) => {
-    setToolSheetProvider(providerKey);
-    setToolSheetOpen(true);
-  };
-
   // --- Render ---
 
   const isProviderFormValid = editingProviderKey
@@ -463,10 +344,14 @@ export default function ProvidersPage() {
       <div className="grid gap-4">
         {providers.map((p) => (
           <Card key={p.key}>
-            <CardHeader className="pb-3">
+            <CardHeader>
               <CardTitle className="flex items-center justify-between text-base">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{p.name || p.key}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link to={`/admin/providers/${p.key}`} className="font-semibold text-primary hover:underline">
+                    {p.name || p.key}
+                  </Link>
+                  {p.url && <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{p.url}</code>}
+                  {p.command && <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{p.command} {p.args?.join(" ")}</code>}
                   <Badge variant="outline">{p.type}</Badge>
                   <Badge variant={p.active ? "default" : "secondary"}>
                     {p.active ? "active" : "inactive"}
@@ -493,23 +378,6 @@ export default function ProvidersPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Connection info */}
-              <div className="text-sm">
-                {p.url && (
-                  <span className="text-muted-foreground">
-                    URL: <span className="text-foreground">{p.url}</span>
-                  </span>
-                )}
-                {p.command && (
-                  <span className="text-muted-foreground">
-                    Command:{" "}
-                    <span className="text-foreground font-mono">
-                      {p.command} {p.args?.join(" ")}
-                    </span>
-                  </span>
-                )}
-              </div>
-
               {/* Schema errors */}
               {p.schemaErrors.length > 0 && (
                 <Alert variant="destructive">
@@ -525,55 +393,25 @@ export default function ProvidersPage() {
                 </Alert>
               )}
 
-              {/* Tools */}
-              {p.tools.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm text-muted-foreground">
-                      Tools ({p.tools.length})
+              {/* Summary stats */}
+              <div className="flex items-center gap-6 text-sm">
+                <span className="text-muted-foreground">
+                  Tools: <span className="text-foreground font-medium">{p.tools.length}</span>
+                </span>
+                {providerUsage[p.key] && (
+                  <>
+                    <span className="text-muted-foreground">
+                      Calls (this month): <span className="text-foreground font-medium">{providerUsage[p.key].count}</span>
                     </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-xs"
-                      onClick={() => openToolSheet(p.key)}
-                    >
-                      <Eye className="h-3 w-3 mr-1" /> View Schema
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {p.tools.map((t) => (
-                      <Badge
-                        key={t}
-                        variant={
-                          p.mismatchedTools.includes(t)
-                            ? "destructive"
-                            : "outline"
-                        }
-                        className="text-xs"
-                      >
-                        {t}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    <span className="text-muted-foreground">
+                      Cost: <span className="text-foreground font-medium">{providerUsage[p.key].cost.toFixed(4)}</span>
+                    </span>
+                  </>
+                )}
+              </div>
 
               {/* Profiles */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">
-                    Profiles ({p.profiles.length})
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 text-xs"
-                    onClick={() => openCreateProfile(p.key, p.type)}
-                  >
-                    <Plus className="h-3 w-3 mr-1" /> Add Profile
-                  </Button>
-                </div>
                 {p.profiles.length > 0 && (
                   <Table>
                     <TableHeader>
@@ -582,6 +420,8 @@ export default function ProvidersPage() {
                         <TableHead>Status</TableHead>
                         <TableHead>URL Override</TableHead>
                         <TableHead>Config</TableHead>
+                        <TableHead className="text-right">Calls</TableHead>
+                        <TableHead className="text-right">Cost</TableHead>
                         <TableHead className="w-[80px]"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -630,6 +470,12 @@ export default function ProvidersPage() {
                                 Object.keys(profile.env).length === 0) &&
                               "-"}
                           </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {profileStatsMap[p.key]?.[profile.key]?.count ?? 0}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {(profileStatsMap[p.key]?.[profile.key]?.cost ?? 0).toFixed(4)}
+                          </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Button
@@ -659,6 +505,16 @@ export default function ProvidersPage() {
                     </TableBody>
                   </Table>
                 )}
+                <div className="flex items-center justify-between mb-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => openCreateProfile(p.key, p.type)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Profile
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -873,12 +729,6 @@ export default function ProvidersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Tool Schema Sheet */}
-      <ToolSchemaSheet
-        open={toolSheetOpen}
-        onOpenChange={setToolSheetOpen}
-        providerKey={toolSheetProvider}
-      />
     </div>
   );
 }

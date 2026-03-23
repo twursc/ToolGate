@@ -15,6 +15,8 @@ export interface ApiKey {
   keyHash: string;
   keyPrefix: string;
   quota: number;
+  allowedTools: string[] | null;
+  balance: number;
   status: "active" | "disabled";
   expiresAt: string | null;
   createdAt: string;
@@ -34,11 +36,15 @@ export interface RequestLog {
   responseStatus: "success" | "error";
   responseTimeMs: number;
   errorMessage: string | null;
+  cost: number;
+  profileKey: string | null;
+  username: string | null;
   createdAt: string;
 }
 
 export interface UsageStats {
   userId: string;
+  username: string | null;
   toolName: string;
   count: number;
   totalCost: number;
@@ -48,6 +54,11 @@ export interface ToolPrice {
   toolName: string;
   unitPrice: number;
   updatedAt: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
 }
 
 export interface McpProfile {

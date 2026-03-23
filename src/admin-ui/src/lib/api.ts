@@ -46,6 +46,9 @@ export const updateApiKey = (id: string, data: Record<string, unknown>) =>
 export const deleteApiKey = (id: string) =>
   api.delete(`/api-keys/${id}`);
 
+export const regenerateApiKey = (id: string) =>
+  api.post(`/api-keys/${id}/regenerate`);
+
 // Providers
 export const listProviders = () => api.get("/providers");
 
@@ -72,9 +75,18 @@ export const reloadProviders = () => api.post("/providers/reload");
 export const getProviderTools = (key: string) =>
   api.get(`/providers/${key}/tools`);
 
+export const getProviderToolUsage = (key: string, params?: Record<string, string>) =>
+  api.get(`/stats/provider/${key}/tool-usage`, { params });
+
+export const getProfileStats = (key: string, params?: Record<string, string>) =>
+  api.get(`/stats/provider/${key}/profile-stats`, { params });
+
 // Stats
 export const getUsageStats = (params?: Record<string, string>) =>
   api.get("/stats/usage", { params });
+
+export const getUserUsage = (userId: string, params?: Record<string, string>) =>
+  api.get(`/stats/users/${userId}/usage`, { params });
 
 export const getRequestLogs = (params?: Record<string, string>) =>
   api.get("/logs", { params });
@@ -87,5 +99,11 @@ export const setToolPrice = (toolName: string, unitPrice: number) =>
 
 export const batchUpdateToolPrices = (prices: { toolName: string; unitPrice: number }[]) =>
   api.put("/tool-prices", { prices });
+
+// Playground
+export const playgroundListTools = () => api.get("/playground/tools");
+
+export const playgroundCall = (toolName: string, args: Record<string, unknown>) =>
+  api.post("/playground/call", { toolName, arguments: args });
 
 export default api;
