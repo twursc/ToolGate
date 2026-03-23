@@ -1,0 +1,91 @@
+import axios from "axios";
+
+const api = axios.create({
+  baseURL: "/admin/api",
+  withCredentials: true,
+});
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401 && !window.location.pathname.endsWith("/login")) {
+      window.location.href = "/admin/login";
+    }
+    return Promise.reject(err);
+  }
+);
+
+// Auth
+export const login = (username: string, password: string) =>
+  api.post("/login", { username, password });
+
+export const logout = () => api.post("/logout");
+
+// Users
+export const listUsers = (limit = 50, offset = 0) =>
+  api.get("/users", { params: { limit, offset } });
+
+export const getUser = (id: string) => api.get(`/users/${id}`);
+
+export const createUser = (data: { username: string; email?: string; note?: string }) =>
+  api.post("/users", data);
+
+export const updateUser = (id: string, data: Record<string, unknown>) =>
+  api.put(`/users/${id}`, data);
+
+// API Keys
+export const listApiKeys = (userId: string) =>
+  api.get(`/users/${userId}/api-keys`);
+
+export const createApiKey = (userId: string, data: { name: string; quota?: number; expiresAt?: string }) =>
+  api.post(`/users/${userId}/api-keys`, data);
+
+export const updateApiKey = (id: string, data: Record<string, unknown>) =>
+  api.put(`/api-keys/${id}`, data);
+
+export const deleteApiKey = (id: string) =>
+  api.delete(`/api-keys/${id}`);
+
+// Providers
+export const listProviders = () => api.get("/providers");
+
+export const createProvider = (data: Record<string, unknown>) =>
+  api.post("/providers", data);
+
+export const updateProvider = (key: string, data: Record<string, unknown>) =>
+  api.put(`/providers/${key}`, data);
+
+export const deleteProvider = (key: string) =>
+  api.delete(`/providers/${key}`);
+
+export const createProfile = (providerKey: string, data: Record<string, unknown>) =>
+  api.post(`/providers/${providerKey}/profiles`, data);
+
+export const updateProfile = (providerKey: string, profileKey: string, data: Record<string, unknown>) =>
+  api.put(`/providers/${providerKey}/profiles/${profileKey}`, data);
+
+export const deleteProfile = (providerKey: string, profileKey: string) =>
+  api.delete(`/providers/${providerKey}/profiles/${profileKey}`);
+
+export const reloadProviders = () => api.post("/providers/reload");
+
+export const getProviderTools = (key: string) =>
+  api.get(`/providers/${key}/tools`);
+
+// Stats
+export const getUsageStats = (params?: Record<string, string>) =>
+  api.get("/stats/usage", { params });
+
+export const getRequestLogs = (params?: Record<string, string>) =>
+  api.get("/logs", { params });
+
+// Tool Prices
+export const listToolPrices = () => api.get("/tool-prices");
+
+export const setToolPrice = (toolName: string, unitPrice: number) =>
+  api.put(`/tool-prices/${toolName}`, { unitPrice });
+
+export const batchUpdateToolPrices = (prices: { toolName: string; unitPrice: number }[]) =>
+  api.put("/tool-prices", { prices });
+
+export default api;
