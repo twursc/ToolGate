@@ -8,6 +8,7 @@ import {
   DollarSign,
   LogOut,
   LayoutDashboard,
+  FlaskConical,
 } from "lucide-react";
 
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
   { to: "/admin/providers", label: "Providers", icon: Server },
   { to: "/admin/stats", label: "Usage Stats", icon: BarChart3 },
   { to: "/admin/pricing", label: "Tool Pricing", icon: DollarSign },
+  { to: "/admin/playground", label: "Playground", icon: FlaskConical },
 ];
 
 export default function AdminLayout() {

@@ -7,8 +7,10 @@ import Dashboard from "@/pages/Dashboard";
 import UsersPage from "@/pages/Users";
 import UserDetail from "@/pages/UserDetail";
 import ProvidersPage from "@/pages/Providers";
+import ProviderDetail from "@/pages/ProviderDetail";
 import StatsPage from "@/pages/Stats";
 import PricingPage from "@/pages/Pricing";
+import PlaygroundPage from "@/pages/Playground";
 
 export default function App() {
   return (
@@ -21,8 +23,10 @@ export default function App() {
             <Route path="users" element={<UsersPage />} />
             <Route path="users/:id" element={<UserDetail />} />
             <Route path="providers" element={<ProvidersPage />} />
+            <Route path="providers/:key" element={<ProviderDetail />} />
             <Route path="stats" element={<StatsPage />} />
             <Route path="pricing" element={<PricingPage />} />
+            <Route path="playground" element={<PlaygroundPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/admin/" replace />} />
         </Routes>

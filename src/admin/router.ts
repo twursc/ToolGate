@@ -10,6 +10,7 @@ import { createUsersRouter } from "./users.js";
 import { createApiKeysRouter } from "./api-keys.js";
 import { createProvidersRouter } from "./providers.js";
 import { createStatsRouter } from "./stats.js";
+import { createPlaygroundRouter } from "./playground.js";
 
 export function createAdminRouter(storage: IStorage): Router {
   const router = Router();
@@ -38,6 +39,7 @@ export function createAdminRouter(storage: IStorage): Router {
   router.get("/users/:userId/api-keys", authMiddleware, apiKeysRouter.listByUser);
   router.get("/api-keys/:id", authMiddleware, apiKeysRouter.getById);
   router.put("/api-keys/:id", authMiddleware, apiKeysRouter.update);
+  router.post("/api-keys/:id/regenerate", authMiddleware, apiKeysRouter.regenerate);
   router.delete("/api-keys/:id", authMiddleware, apiKeysRouter.delete);
 
   // Providers routes
@@ -56,10 +58,17 @@ export function createAdminRouter(storage: IStorage): Router {
   const statsRouter = createStatsRouter(storage);
   router.get("/stats/usage", authMiddleware, statsRouter.getUsage);
   router.get("/stats/users/:id/usage", authMiddleware, statsRouter.getUserUsage);
+  router.get("/stats/provider/:key/tool-usage", authMiddleware, statsRouter.getProviderToolUsage);
+  router.get("/stats/provider/:key/profile-stats", authMiddleware, statsRouter.getProfileStats);
   router.get("/logs", authMiddleware, statsRouter.getLogs);
   router.get("/tool-prices", authMiddleware, statsRouter.listToolPrices);
   router.put("/tool-prices/:toolName", authMiddleware, statsRouter.setToolPrice);
   router.put("/tool-prices", authMiddleware, statsRouter.batchUpdateToolPrices);
+
+  // Playground routes
+  const playgroundRouter = createPlaygroundRouter(storage);
+  router.get("/playground/tools", authMiddleware, playgroundRouter.listTools);
+  router.post("/playground/call", authMiddleware, playgroundRouter.call);
 
   return router;
 }
