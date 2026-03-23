@@ -1,0 +1,38 @@
+server:
+  port: 3000
+  mcpPort: 3001
+  host: "0.0.0.0"
+
+admin:
+  username: "admin"
+  password: "changeme"
+  sessionSecret: "mcai-mcp-gateway-secret-change-me"
+
+storage:
+  # "sqlite" or "postgres"
+  type: "sqlite"
+  sqlite:
+    path: "./data/gateway.db"
+  postgres:
+    host: "localhost"
+    port: 5432
+    database: "mcp_gateway"
+    username: "postgres"
+    password: ""
+
+logging:
+  level: "info"
+  # Log retention in days
+  retentionDays: 90
+
+proxy:
+  serverToolnameSeparator: "__"
+  retrySseToolCall: true
+  sseToolCallMaxRetries: 2
+  sseToolCallRetryDelayBaseMs: 300
+  retryHttpToolCall: true
+  httpToolCallMaxRetries: 2
+  httpToolCallRetryDelayBaseMs: 300
+  retryStdioToolCall: true
+  stdioToolCallMaxRetries: 2
+  stdioToolCallRetryDelayBaseMs: 300

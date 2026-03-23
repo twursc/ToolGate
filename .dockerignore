@@ -1,0 +1,10 @@
+node_modules
+build
+*.db
+data/
+.monkeycode
+.claude
+.git
+.gitignore
+*.test.ts
+vitest.config.ts
