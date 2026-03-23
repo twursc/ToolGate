@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import type { IStorage, UsageFilter, UserToolFilter } from "../storage/interface.js";
+import type { IStorage, UsageFilter, UserToolFilter, LogFilter } from "../storage/interface.js";
 import { logger } from "../logger.js";
 
 export function createStatsRouter(storage: IStorage) {
@@ -10,12 +10,15 @@ export function createStatsRouter(storage: IStorage) {
         const filter: UsageFilter = {};
         if (req.query.userId) filter.userId = req.query.userId as string;
         if (req.query.toolName) filter.toolName = req.query.toolName as string;
+        if (req.query.provider) filter.toolNamePrefix = (req.query.provider as string) + "__";
         if (req.query.billingMonth) filter.billingMonth = req.query.billingMonth as string;
         if (req.query.startDate) filter.startDate = new Date(req.query.startDate as string);
         if (req.query.endDate) filter.endDate = new Date(req.query.endDate as string);
+        if (req.query.limit) filter.limit = parseInt(req.query.limit as string, 10);
+        if (req.query.offset) filter.offset = parseInt(req.query.offset as string, 10);
 
-        const stats = await storage.getUsageStats(filter);
-        res.json(stats);
+        const result = await storage.getUsageStats(filter);
+        res.json(result);
       } catch (e: any) {
         logger.error(`Failed to get usage stats: ${e.message}`);
         res.status(500).json({ error: e.message });
@@ -25,7 +28,7 @@ export function createStatsRouter(storage: IStorage) {
     // GET /admin/stats/users/:id/usage - Get usage by user
     getUserUsage: async (req: Request, res: Response): Promise<void> => {
       try {
-        const { userId } = req.params;
+        const userId = req.params.userId || req.params.id;
         const filter: UserToolFilter = { userId };
         if (req.query.billingMonth) filter.billingMonth = req.query.billingMonth as string;
         if (req.query.startDate) filter.startDate = new Date(req.query.startDate as string);
@@ -55,6 +58,39 @@ export function createStatsRouter(storage: IStorage) {
         res.json(logs);
       } catch (e: any) {
         logger.error(`Failed to query logs: ${e.message}`);
+        res.status(500).json({ error: e.message });
+      }
+    },
+
+    // GET /admin/stats/provider/:key/tool-usage - Get per-tool usage with profile & user breakdown
+    getProviderToolUsage: async (req: Request, res: Response): Promise<void> => {
+      try {
+        const providerKey = req.params.key;
+        const billingMonth = (req.query.billingMonth as string) || new Date().toISOString().slice(0, 7);
+        const toolNamePrefix = providerKey + "__";
+
+        const filter: UsageFilter = { toolNamePrefix, billingMonth, limit: 10000, offset: 0 };
+        const usageResult = await storage.getUsageStats(filter);
+
+        res.json({
+          data: usageResult.data,
+          billingMonth,
+        });
+      } catch (e: any) {
+        logger.error(`Failed to get provider tool usage: ${e.message}`);
+        res.status(500).json({ error: e.message });
+      }
+    },
+
+    // GET /admin/stats/provider/:key/profile-stats - Get per-profile call count and cost
+    getProfileStats: async (req: Request, res: Response): Promise<void> => {
+      try {
+        const providerKey = req.params.key;
+        const billingMonth = (req.query.billingMonth as string) || new Date().toISOString().slice(0, 7);
+        const stats = await storage.getProfileStats(providerKey, billingMonth);
+        res.json(stats);
+      } catch (e: any) {
+        logger.error(`Failed to get profile stats: ${e.message}`);
         res.status(500).json({ error: e.message });
       }
     },
