@@ -1,0 +1,17 @@
+services:
+  mcai-mcp-gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+      - "${MCP_PORT:-3001}:${MCP_PORT:-3001}"
+    volumes:
+      - gateway-data:/app/data
+      - ../config:/app/config
+    restart: unless-stopped
+
+volumes:
+  gateway-data:
