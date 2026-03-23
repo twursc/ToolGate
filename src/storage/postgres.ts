@@ -5,6 +5,7 @@ import type {
   User,
   ApiKey,
   RequestLog,
+  RequestLogWithUser,
   UsageRecord,
   ToolPrice,
   CreateUserInput,
@@ -15,6 +16,7 @@ import type {
   UserToolFilter,
   UsageStats,
   UserToolStats,
+  PaginatedResult,
 } from "./interface.js";
 
 const { Pool } = pg;
@@ -93,6 +95,16 @@ export class PostgresStorage implements IStorage {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+
+    // Migrations: add new columns if they don't exist
+    await this.pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS allowed_tools TEXT DEFAULT NULL;
+        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS balance DECIMAL(10,4) DEFAULT -1;
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS cost DECIMAL(10,4) DEFAULT 0;
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS profile_key VARCHAR(255) DEFAULT NULL;
+      END $$;
+    `);
   }
 
   private toUser(row: Record<string, unknown>): User {
@@ -108,6 +120,7 @@ export class PostgresStorage implements IStorage {
   }
 
   private toApiKey(row: Record<string, unknown>): ApiKey {
+    const allowedToolsRaw = row.allowed_tools as string | null;
     return {
       id: row.id as string,
       userId: row.user_id as string,
@@ -115,6 +128,8 @@ export class PostgresStorage implements IStorage {
       keyHash: row.key_hash as string,
       keyPrefix: row.key_prefix as string,
       quota: Number(row.quota),
+      allowedTools: allowedToolsRaw ? JSON.parse(allowedToolsRaw) : null,
+      balance: Number(row.balance ?? -1),
       status: row.status as "active" | "disabled",
       expiresAt: row.expires_at ? new Date(row.expires_at as string) : null,
       createdAt: new Date(row.created_at as string),
@@ -132,7 +147,16 @@ export class PostgresStorage implements IStorage {
       responseStatus: row.response_status as "success" | "error",
       responseTimeMs: Number(row.response_time_ms),
       errorMessage: (row.error_message as string) ?? null,
+      cost: Number(row.cost ?? 0),
+      profileKey: (row.profile_key as string) ?? null,
       createdAt: new Date(row.created_at as string),
+    };
+  }
+
+  private toRequestLogWithUser(row: Record<string, unknown>): RequestLogWithUser {
+    return {
+      ...this.toRequestLog(row),
+      username: (row.username as string) ?? null,
     };
   }
 
@@ -183,9 +207,11 @@ export class PostgresStorage implements IStorage {
   async createApiKey(input: CreateApiKeyInput): Promise<ApiKey> {
     const id = uuidv4();
     const status = input.status ?? "active";
+    const allowedTools = input.allowedTools ? JSON.stringify(input.allowedTools) : null;
+    const balance = input.balance ?? -1;
     const { rows } = await this.pool.query(
-      `INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, quota, status, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [id, input.userId, input.name, input.keyHash, input.keyPrefix, input.quota ?? 0, status, input.expiresAt ?? null]
+      `INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, quota, allowed_tools, balance, status, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [id, input.userId, input.name, input.keyHash, input.keyPrefix, input.quota ?? 0, allowedTools, balance, status, input.expiresAt ?? null]
     );
     return this.toApiKey(rows[0]);
   }
@@ -205,7 +231,7 @@ export class PostgresStorage implements IStorage {
     return rows.map((r: Record<string, unknown>) => this.toApiKey(r));
   }
 
-  async updateApiKey(id: string, data: Partial<Pick<ApiKey, "name" | "quota" | "status" | "expiresAt">>): Promise<ApiKey> {
+  async updateApiKey(id: string, data: Partial<Pick<ApiKey, "name" | "quota" | "status" | "expiresAt" | "allowedTools" | "balance">>): Promise<ApiKey> {
     const sets: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -213,9 +239,19 @@ export class PostgresStorage implements IStorage {
     if (data.quota !== undefined) { sets.push(`quota = $${idx++}`); values.push(data.quota); }
     if (data.status !== undefined) { sets.push(`status = $${idx++}`); values.push(data.status); }
     if (data.expiresAt !== undefined) { sets.push(`expires_at = $${idx++}`); values.push(data.expiresAt); }
+    if (data.allowedTools !== undefined) { sets.push(`allowed_tools = $${idx++}`); values.push(data.allowedTools ? JSON.stringify(data.allowedTools) : null); }
+    if (data.balance !== undefined) { sets.push(`balance = $${idx++}`); values.push(data.balance); }
     values.push(id);
     const { rows } = await this.pool.query(`UPDATE api_keys SET ${sets.join(", ")} WHERE id = $${idx} RETURNING *`, values);
     return this.toApiKey(rows[0]);
+  }
+
+  async regenerateApiKey(id: string, newKeyHash: string, newKeyPrefix: string): Promise<void> {
+    await this.pool.query("UPDATE api_keys SET key_hash = $1, key_prefix = $2 WHERE id = $3", [newKeyHash, newKeyPrefix, id]);
+  }
+
+  async deductBalance(apiKeyId: string, amount: number): Promise<void> {
+    await this.pool.query("UPDATE api_keys SET balance = balance - $1 WHERE id = $2 AND balance > 0", [amount, apiKeyId]);
   }
 
   async deleteApiKey(id: string): Promise<void> {
@@ -224,33 +260,35 @@ export class PostgresStorage implements IStorage {
 
   // --- Request Logs ---
 
-  async insertRequestLog(log: Omit<RequestLog, "id" | "createdAt">): Promise<void> {
+  async insertRequestLog(log: Omit<RequestLog, "id" | "createdAt"> & { createdAt?: Date }): Promise<void> {
     const id = uuidv4();
     await this.pool.query(
-      `INSERT INTO request_logs (id, user_id, api_key_id, method, tool_name, request_summary, response_status, response_time_ms, error_message)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [id, log.userId, log.apiKeyId, log.method, log.toolName, log.requestSummary, log.responseStatus, log.responseTimeMs, log.errorMessage]
+      `INSERT INTO request_logs (id, user_id, api_key_id, method, tool_name, request_summary, response_status, response_time_ms, error_message, cost, profile_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [id, log.userId, log.apiKeyId, log.method, log.toolName, log.requestSummary, log.responseStatus, log.responseTimeMs, log.errorMessage, log.cost ?? 0, log.profileKey ?? null]
     );
   }
 
-  async queryRequestLogs(filter: LogFilter): Promise<RequestLog[]> {
+  async queryRequestLogs(filter: LogFilter): Promise<PaginatedResult<RequestLogWithUser>> {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
-    if (filter.userId) { conditions.push(`user_id = $${idx++}`); values.push(filter.userId); }
-    if (filter.apiKeyId) { conditions.push(`api_key_id = $${idx++}`); values.push(filter.apiKeyId); }
-    if (filter.method) { conditions.push(`method = $${idx++}`); values.push(filter.method); }
-    if (filter.startDate) { conditions.push(`created_at >= $${idx++}`); values.push(filter.startDate); }
-    if (filter.endDate) { conditions.push(`created_at <= $${idx++}`); values.push(filter.endDate); }
+    if (filter.userId) { conditions.push(`r.user_id = $${idx++}`); values.push(filter.userId); }
+    if (filter.apiKeyId) { conditions.push(`r.api_key_id = $${idx++}`); values.push(filter.apiKeyId); }
+    if (filter.method) { conditions.push(`r.method = $${idx++}`); values.push(filter.method); }
+    if (filter.startDate) { conditions.push(`r.created_at >= $${idx++}`); values.push(filter.startDate); }
+    if (filter.endDate) { conditions.push(`r.created_at <= $${idx++}`); values.push(filter.endDate); }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const countResult = await this.pool.query(`SELECT COUNT(*)::int as cnt FROM request_logs r ${where}`, values);
+    const total = countResult.rows[0]?.cnt ?? 0;
     const limit = filter.limit ?? 100;
     const offset = filter.offset ?? 0;
-    values.push(limit, offset);
+    const dataValues = [...values, limit, offset];
     const { rows } = await this.pool.query(
-      `SELECT * FROM request_logs ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx}`,
-      values
+      `SELECT r.*, u.username FROM request_logs r LEFT JOIN users u ON r.user_id = u.id ${where} ORDER BY r.created_at DESC LIMIT $${idx++} OFFSET $${idx}`,
+      dataValues
     );
-    return rows.map((r: Record<string, unknown>) => this.toRequestLog(r));
+    return { data: rows.map((r: Record<string, unknown>) => this.toRequestLogWithUser(r)), total };
   }
 
   async cleanExpiredLogs(beforeDate: Date): Promise<number> {
@@ -269,27 +307,40 @@ export class PostgresStorage implements IStorage {
     );
   }
 
-  async getUsageStats(filter: UsageFilter): Promise<UsageStats[]> {
+  async getUsageStats(filter: UsageFilter): Promise<PaginatedResult<UsageStats>> {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
-    if (filter.userId) { conditions.push(`user_id = $${idx++}`); values.push(filter.userId); }
-    if (filter.toolName) { conditions.push(`tool_name = $${idx++}`); values.push(filter.toolName); }
-    if (filter.billingMonth) { conditions.push(`billing_month = $${idx++}`); values.push(filter.billingMonth); }
-    if (filter.startDate) { conditions.push(`created_at >= $${idx++}`); values.push(filter.startDate); }
-    if (filter.endDate) { conditions.push(`created_at <= $${idx++}`); values.push(filter.endDate); }
+    if (filter.userId) { conditions.push(`r.user_id = $${idx++}`); values.push(filter.userId); }
+    if (filter.toolName) { conditions.push(`r.tool_name = $${idx++}`); values.push(filter.toolName); }
+    if (filter.toolNamePrefix) { conditions.push(`r.tool_name LIKE $${idx++}`); values.push(filter.toolNamePrefix + "%"); }
+    if (filter.billingMonth) { conditions.push(`r.billing_month = $${idx++}`); values.push(filter.billingMonth); }
+    if (filter.startDate) { conditions.push(`r.created_at >= $${idx++}`); values.push(filter.startDate); }
+    if (filter.endDate) { conditions.push(`r.created_at <= $${idx++}`); values.push(filter.endDate); }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const { rows } = await this.pool.query(
-      `SELECT user_id, tool_name, COUNT(*)::int as count, COALESCE(SUM(unit_price), 0)::float as total_cost
-       FROM usage_records ${where} GROUP BY user_id, tool_name ORDER BY count DESC`,
+    const countResult = await this.pool.query(
+      `SELECT COUNT(*)::int as cnt FROM (SELECT 1 FROM usage_records r ${where} GROUP BY r.user_id, r.tool_name) sub`,
       values
     );
-    return rows.map((r: Record<string, unknown>) => ({
-      userId: r.user_id as string,
-      toolName: r.tool_name as string,
-      count: r.count as number,
-      totalCost: r.total_cost as number,
-    }));
+    const total = countResult.rows[0]?.cnt ?? 0;
+    const limit = filter.limit ?? 100;
+    const offset = filter.offset ?? 0;
+    const dataValues = [...values, limit, offset];
+    const { rows } = await this.pool.query(
+      `SELECT r.user_id, r.tool_name, COUNT(*)::int as count, COALESCE(SUM(r.unit_price), 0)::float as total_cost, u.username
+       FROM usage_records r LEFT JOIN users u ON r.user_id = u.id ${where} GROUP BY r.user_id, r.tool_name, u.username ORDER BY count DESC LIMIT $${idx++} OFFSET $${idx}`,
+      dataValues
+    );
+    return {
+      data: rows.map((r: Record<string, unknown>) => ({
+        userId: r.user_id as string,
+        username: (r.username as string) ?? null,
+        toolName: r.tool_name as string,
+        count: r.count as number,
+        totalCost: r.total_cost as number,
+      })),
+      total,
+    };
   }
 
   async getUsageByUserAndTool(filter: UserToolFilter): Promise<UserToolStats[]> {
@@ -318,6 +369,24 @@ export class PostgresStorage implements IStorage {
       [userId, month]
     );
     return rows[0]?.count ?? 0;
+  }
+
+  // --- Profile Stats ---
+
+  async getProfileStats(providerKey: string, billingMonth: string): Promise<{ profileKey: string; count: number; totalCost: number }[]> {
+    const toolPrefix = providerKey + "__%";
+    const { rows } = await this.pool.query(
+      `SELECT profile_key, COUNT(*)::int as count, COALESCE(SUM(cost), 0)::float as total_cost
+       FROM request_logs
+       WHERE tool_name LIKE $1 AND created_at >= ($2 || '-01')::date AND created_at < (($2 || '-01')::date + interval '1 month') AND profile_key IS NOT NULL
+       GROUP BY profile_key`,
+      [toolPrefix, billingMonth]
+    );
+    return rows.map((r: Record<string, unknown>) => ({
+      profileKey: r.profile_key as string,
+      count: r.count as number,
+      totalCost: r.total_cost as number,
+    }));
   }
 
   // --- Tool Pricing ---

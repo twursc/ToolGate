@@ -149,10 +149,10 @@ describe("SqliteStorage - Usage Records", () => {
     const user = await storage.createUser({ username: "usageuser3" });
     const apiKey = await storage.createApiKey({ userId: user.id, name: "key", keyHash: hashKey("s"), keyPrefix: "sk_u3" });
     await storage.insertUsageRecord({ userId: user.id, apiKeyId: apiKey.id, toolName: "statTool", unitPrice: 5, billingMonth: "2026-03" });
-    const stats = await storage.getUsageStats({ userId: user.id, billingMonth: "2026-03" });
-    expect(stats.length).toBe(1);
-    expect(stats[0].toolName).toBe("statTool");
-    expect(stats[0].totalCost).toBe(5);
+    const result = await storage.getUsageStats({ userId: user.id, billingMonth: "2026-03" });
+    expect(result.data.length).toBe(1);
+    expect(result.data[0].toolName).toBe("statTool");
+    expect(result.data[0].totalCost).toBe(5);
   });
 });
 
@@ -203,8 +203,8 @@ describe("SqliteStorage - Request Logs", () => {
       errorMessage: null,
     });
     const logs = await storage.queryRequestLogs({ userId: user.id });
-    expect(logs.length).toBe(1);
-    expect(logs[0].method).toBe("tools/call");
+    expect(logs.data.length).toBe(1);
+    expect(logs.data[0].method).toBe("tools/call");
   });
 
   it("should clean expired logs", async () => {
@@ -236,6 +236,6 @@ describe("SqliteStorage - Request Logs", () => {
     const deleted = await storage.cleanExpiredLogs(new Date("2021-01-01T00:00:00Z"));
     expect(deleted).toBe(1);
     const remaining = await storage.queryRequestLogs({ userId: user.id });
-    expect(remaining.length).toBe(1);
+    expect(remaining.data.length).toBe(1);
   });
 });

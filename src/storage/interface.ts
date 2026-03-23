@@ -17,6 +17,8 @@ export interface ApiKey {
   keyHash: string;
   keyPrefix: string;
   quota: number; // 0 = unlimited
+  allowedTools: string[] | null; // null = all tools allowed
+  balance: number; // -1 = unlimited
   status: "active" | "disabled";
   expiresAt: Date | null;
   createdAt: Date;
@@ -32,6 +34,8 @@ export interface RequestLog {
   responseStatus: "success" | "error";
   responseTimeMs: number;
   errorMessage: string | null;
+  cost: number;
+  profileKey: string | null;
   createdAt: Date;
 }
 
@@ -65,6 +69,8 @@ export interface CreateApiKeyInput {
   keyHash: string;
   keyPrefix: string;
   quota?: number;
+  allowedTools?: string[] | null;
+  balance?: number;
   status?: "active" | "disabled";
   expiresAt?: Date | null;
 }
@@ -89,9 +95,17 @@ export interface LogFilter {
 export interface UsageFilter {
   userId?: string;
   toolName?: string;
+  toolNamePrefix?: string;
   startDate?: Date;
   endDate?: Date;
   billingMonth?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
 }
 
 export interface UserToolFilter {
@@ -101,10 +115,15 @@ export interface UserToolFilter {
   billingMonth?: string;
 }
 
+export interface RequestLogWithUser extends RequestLog {
+  username: string | null;
+}
+
 // --- Stats Types ---
 
 export interface UsageStats {
   userId: string;
+  username: string | null;
   toolName: string;
   count: number;
   totalCost: number;
@@ -131,19 +150,24 @@ export interface IStorage {
   getApiKey(id: string): Promise<ApiKey | null>;
   getApiKeyByHash(keyHash: string): Promise<ApiKey | null>;
   listApiKeysByUser(userId: string): Promise<ApiKey[]>;
-  updateApiKey(id: string, data: Partial<Pick<ApiKey, "name" | "quota" | "status" | "expiresAt">>): Promise<ApiKey>;
+  updateApiKey(id: string, data: Partial<Pick<ApiKey, "name" | "quota" | "status" | "expiresAt" | "allowedTools" | "balance">>): Promise<ApiKey>;
   deleteApiKey(id: string): Promise<void>;
+  regenerateApiKey(id: string, newKeyHash: string, newKeyPrefix: string): Promise<void>;
+  deductBalance(apiKeyId: string, amount: number): Promise<void>;
 
   // Request logs
   insertRequestLog(log: Omit<RequestLog, "id" | "createdAt"> & { createdAt?: Date }): Promise<void>;
-  queryRequestLogs(filter: LogFilter): Promise<RequestLog[]>;
+  queryRequestLogs(filter: LogFilter): Promise<PaginatedResult<RequestLogWithUser>>;
   cleanExpiredLogs(beforeDate: Date): Promise<number>;
 
   // Usage records
   insertUsageRecord(record: Omit<UsageRecord, "id" | "createdAt">): Promise<void>;
-  getUsageStats(filter: UsageFilter): Promise<UsageStats[]>;
+  getUsageStats(filter: UsageFilter): Promise<PaginatedResult<UsageStats>>;
   getUsageByUserAndTool(filter: UserToolFilter): Promise<UserToolStats[]>;
   getMonthlyUsageCount(userId: string, month: string): Promise<number>;
+
+  // Profile stats
+  getProfileStats(providerKey: string, billingMonth: string): Promise<{ profileKey: string; count: number; totalCost: number }[]>;
 
   // Tool pricing
   setToolPrice(toolName: string, unitPrice: number): Promise<void>;

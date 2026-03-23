@@ -49,6 +49,8 @@ export function createLoggingMiddleware(storage: IStorage) {
             responseStatus,
             responseTimeMs,
             errorMessage,
+            cost: 0,
+            profileKey: null,
           });
           logger.debug(`Request logged: ${method} in ${responseTimeMs}ms`);
         } catch (e: any) {

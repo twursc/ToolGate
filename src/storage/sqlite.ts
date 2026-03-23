@@ -5,6 +5,7 @@ import type {
   User,
   ApiKey,
   RequestLog,
+  RequestLogWithUser,
   UsageRecord,
   ToolPrice,
   CreateUserInput,
@@ -15,6 +16,7 @@ import type {
   UserToolFilter,
   UsageStats,
   UserToolStats,
+  PaginatedResult,
 } from "./interface.js";
 
 export class SqliteStorage implements IStorage {
@@ -86,6 +88,25 @@ export class SqliteStorage implements IStorage {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
+
+    // Migrations: add new columns if they don't exist
+    const apiKeyCols = this.db.prepare("PRAGMA table_info(api_keys)").all() as { name: string }[];
+    const apiKeyColNames = apiKeyCols.map((c) => c.name);
+    if (!apiKeyColNames.includes("allowed_tools")) {
+      this.db.exec("ALTER TABLE api_keys ADD COLUMN allowed_tools TEXT DEFAULT NULL");
+    }
+    if (!apiKeyColNames.includes("balance")) {
+      this.db.exec("ALTER TABLE api_keys ADD COLUMN balance REAL DEFAULT -1");
+    }
+
+    const logCols = this.db.prepare("PRAGMA table_info(request_logs)").all() as { name: string }[];
+    const logColNames = logCols.map((c) => c.name);
+    if (!logColNames.includes("cost")) {
+      this.db.exec("ALTER TABLE request_logs ADD COLUMN cost REAL DEFAULT 0");
+    }
+    if (!logColNames.includes("profile_key")) {
+      this.db.exec("ALTER TABLE request_logs ADD COLUMN profile_key TEXT DEFAULT NULL");
+    }
   }
 
   // PLACEHOLDER_METHODS
@@ -103,6 +124,7 @@ export class SqliteStorage implements IStorage {
   }
 
   private toApiKey(row: Record<string, unknown>): ApiKey {
+    const allowedToolsRaw = row.allowed_tools as string | null;
     return {
       id: row.id as string,
       userId: row.user_id as string,
@@ -110,6 +132,8 @@ export class SqliteStorage implements IStorage {
       keyHash: row.key_hash as string,
       keyPrefix: row.key_prefix as string,
       quota: row.quota as number,
+      allowedTools: allowedToolsRaw ? JSON.parse(allowedToolsRaw) : null,
+      balance: (row.balance as number) ?? -1,
       status: row.status as "active" | "disabled",
       expiresAt: row.expires_at ? new Date(row.expires_at as string) : null,
       createdAt: new Date(row.created_at as string),
@@ -127,7 +151,16 @@ export class SqliteStorage implements IStorage {
       responseStatus: row.response_status as "success" | "error",
       responseTimeMs: row.response_time_ms as number,
       errorMessage: (row.error_message as string) ?? null,
+      cost: (row.cost as number) ?? 0,
+      profileKey: (row.profile_key as string) ?? null,
       createdAt: new Date(row.created_at as string),
+    };
+  }
+
+  private toRequestLogWithUser(row: Record<string, unknown>): RequestLogWithUser {
+    return {
+      ...this.toRequestLog(row),
+      username: (row.username as string) ?? null,
     };
   }
 
@@ -192,10 +225,12 @@ export class SqliteStorage implements IStorage {
     const id = uuidv4();
     const now = new Date().toISOString();
     const status = input.status ?? "active";
+    const allowedTools = input.allowedTools ? JSON.stringify(input.allowedTools) : null;
+    const balance = input.balance ?? -1;
     this.db.prepare(
-      `INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, quota, status, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, input.userId, input.name, input.keyHash, input.keyPrefix, input.quota ?? 0, status, input.expiresAt?.toISOString() ?? null, now);
+      `INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, quota, allowed_tools, balance, status, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, input.userId, input.name, input.keyHash, input.keyPrefix, input.quota ?? 0, allowedTools, balance, status, input.expiresAt?.toISOString() ?? null, now);
     return (await this.getApiKey(id))!;
   }
 
@@ -214,18 +249,28 @@ export class SqliteStorage implements IStorage {
     return rows.map((r) => this.toApiKey(r));
   }
 
-  async updateApiKey(id: string, data: Partial<Pick<ApiKey, "name" | "quota" | "status" | "expiresAt">>): Promise<ApiKey> {
+  async updateApiKey(id: string, data: Partial<Pick<ApiKey, "name" | "quota" | "status" | "expiresAt" | "allowedTools" | "balance">>): Promise<ApiKey> {
     const sets: string[] = [];
     const values: unknown[] = [];
     if (data.name !== undefined) { sets.push("name = ?"); values.push(data.name); }
     if (data.quota !== undefined) { sets.push("quota = ?"); values.push(data.quota); }
     if (data.status !== undefined) { sets.push("status = ?"); values.push(data.status); }
     if (data.expiresAt !== undefined) { sets.push("expires_at = ?"); values.push(data.expiresAt?.toISOString() ?? null); }
+    if (data.allowedTools !== undefined) { sets.push("allowed_tools = ?"); values.push(data.allowedTools ? JSON.stringify(data.allowedTools) : null); }
+    if (data.balance !== undefined) { sets.push("balance = ?"); values.push(data.balance); }
     values.push(id);
     if (sets.length > 0) {
       this.db.prepare(`UPDATE api_keys SET ${sets.join(", ")} WHERE id = ?`).run(...values);
     }
     return (await this.getApiKey(id))!;
+  }
+
+  async regenerateApiKey(id: string, newKeyHash: string, newKeyPrefix: string): Promise<void> {
+    this.db.prepare("UPDATE api_keys SET key_hash = ?, key_prefix = ? WHERE id = ?").run(newKeyHash, newKeyPrefix, id);
+  }
+
+  async deductBalance(apiKeyId: string, amount: number): Promise<void> {
+    this.db.prepare("UPDATE api_keys SET balance = balance - ? WHERE id = ? AND balance > 0").run(amount, apiKeyId);
   }
 
   async deleteApiKey(id: string): Promise<void> {
@@ -238,26 +283,28 @@ export class SqliteStorage implements IStorage {
     const id = uuidv4();
     const now = (log.createdAt ?? new Date()).toISOString();
     this.db.prepare(
-      `INSERT INTO request_logs (id, user_id, api_key_id, method, tool_name, request_summary, response_status, response_time_ms, error_message, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, log.userId, log.apiKeyId, log.method, log.toolName, log.requestSummary, log.responseStatus, log.responseTimeMs, log.errorMessage, now);
+      `INSERT INTO request_logs (id, user_id, api_key_id, method, tool_name, request_summary, response_status, response_time_ms, error_message, cost, profile_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, log.userId, log.apiKeyId, log.method, log.toolName, log.requestSummary, log.responseStatus, log.responseTimeMs, log.errorMessage, log.cost ?? 0, log.profileKey ?? null, now);
   }
 
-  async queryRequestLogs(filter: LogFilter): Promise<RequestLog[]> {
+  async queryRequestLogs(filter: LogFilter): Promise<PaginatedResult<RequestLogWithUser>> {
     const conditions: string[] = [];
     const values: unknown[] = [];
-    if (filter.userId) { conditions.push("user_id = ?"); values.push(filter.userId); }
-    if (filter.apiKeyId) { conditions.push("api_key_id = ?"); values.push(filter.apiKeyId); }
-    if (filter.method) { conditions.push("method = ?"); values.push(filter.method); }
-    if (filter.startDate) { conditions.push("created_at >= ?"); values.push(filter.startDate.toISOString()); }
-    if (filter.endDate) { conditions.push("created_at <= ?"); values.push(filter.endDate.toISOString()); }
+    if (filter.userId) { conditions.push("r.user_id = ?"); values.push(filter.userId); }
+    if (filter.apiKeyId) { conditions.push("r.api_key_id = ?"); values.push(filter.apiKeyId); }
+    if (filter.method) { conditions.push("r.method = ?"); values.push(filter.method); }
+    if (filter.startDate) { conditions.push("r.created_at >= ?"); values.push(filter.startDate.toISOString()); }
+    if (filter.endDate) { conditions.push("r.created_at <= ?"); values.push(filter.endDate.toISOString()); }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const limit = filter.limit ?? 100;
     const offset = filter.offset ?? 0;
+    const totalRow = this.db.prepare(`SELECT COUNT(*) as cnt FROM request_logs r ${where}`).get(...values) as Record<string, unknown>;
+    const total = (totalRow?.cnt as number) ?? 0;
     const rows = this.db.prepare(
-      `SELECT * FROM request_logs ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      `SELECT r.*, u.username FROM request_logs r LEFT JOIN users u ON r.user_id = u.id ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`
     ).all(...values, limit, offset) as Record<string, unknown>[];
-    return rows.map((r) => this.toRequestLog(r));
+    return { data: rows.map((r) => this.toRequestLogWithUser(r)), total };
   }
 
   async cleanExpiredLogs(beforeDate: Date): Promise<number> {
@@ -276,27 +323,38 @@ export class SqliteStorage implements IStorage {
     ).run(id, record.userId, record.apiKeyId, record.toolName, record.unitPrice, record.billingMonth, now);
   }
 
-  async getUsageStats(filter: UsageFilter): Promise<UsageStats[]> {
+  async getUsageStats(filter: UsageFilter): Promise<PaginatedResult<UsageStats>> {
     const conditions: string[] = [];
     const values: unknown[] = [];
-    if (filter.userId) { conditions.push("user_id = ?"); values.push(filter.userId); }
-    if (filter.toolName) { conditions.push("tool_name = ?"); values.push(filter.toolName); }
-    if (filter.billingMonth) { conditions.push("billing_month = ?"); values.push(filter.billingMonth); }
-    if (filter.startDate) { conditions.push("created_at >= ?"); values.push(filter.startDate.toISOString()); }
-    if (filter.endDate) { conditions.push("created_at <= ?"); values.push(filter.endDate.toISOString()); }
+    if (filter.userId) { conditions.push("r.user_id = ?"); values.push(filter.userId); }
+    if (filter.toolName) { conditions.push("r.tool_name = ?"); values.push(filter.toolName); }
+    if (filter.toolNamePrefix) { conditions.push("r.tool_name LIKE ?"); values.push(filter.toolNamePrefix + "%"); }
+    if (filter.billingMonth) { conditions.push("r.billing_month = ?"); values.push(filter.billingMonth); }
+    if (filter.startDate) { conditions.push("r.created_at >= ?"); values.push(filter.startDate.toISOString()); }
+    if (filter.endDate) { conditions.push("r.created_at <= ?"); values.push(filter.endDate.toISOString()); }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const limit = filter.limit ?? 100;
+    const offset = filter.offset ?? 0;
+    const totalRow = this.db.prepare(
+      `SELECT COUNT(*) as cnt FROM (SELECT 1 FROM usage_records r ${where} GROUP BY r.user_id, r.tool_name)`
+    ).get(...values) as Record<string, unknown>;
+    const total = (totalRow?.cnt as number) ?? 0;
     const rows = this.db.prepare(
-      `SELECT user_id, tool_name, COUNT(*) as count, SUM(unit_price) as total_cost
-       FROM usage_records ${where}
-       GROUP BY user_id, tool_name
-       ORDER BY count DESC`
-    ).all(...values) as Record<string, unknown>[];
-    return rows.map((r) => ({
-      userId: r.user_id as string,
-      toolName: r.tool_name as string,
-      count: r.count as number,
-      totalCost: (r.total_cost as number) ?? 0,
-    }));
+      `SELECT r.user_id, r.tool_name, COUNT(*) as count, SUM(r.unit_price) as total_cost, u.username
+       FROM usage_records r LEFT JOIN users u ON r.user_id = u.id ${where}
+       GROUP BY r.user_id, r.tool_name
+       ORDER BY count DESC LIMIT ? OFFSET ?`
+    ).all(...values, limit, offset) as Record<string, unknown>[];
+    return {
+      data: rows.map((r) => ({
+        userId: r.user_id as string,
+        username: (r.username as string) ?? null,
+        toolName: r.tool_name as string,
+        count: r.count as number,
+        totalCost: (r.total_cost as number) ?? 0,
+      })),
+      total,
+    };
   }
 
   async getUsageByUserAndTool(filter: UserToolFilter): Promise<UserToolStats[]> {
@@ -324,6 +382,23 @@ export class SqliteStorage implements IStorage {
       "SELECT COUNT(*) as count FROM usage_records WHERE user_id = ? AND billing_month = ?"
     ).get(userId, month) as Record<string, unknown>;
     return (row.count as number) ?? 0;
+  }
+
+  // --- Profile Stats ---
+
+  async getProfileStats(providerKey: string, billingMonth: string): Promise<{ profileKey: string; count: number; totalCost: number }[]> {
+    const toolPrefix = providerKey + "__%";
+    const rows = this.db.prepare(
+      `SELECT profile_key, COUNT(*) as count, COALESCE(SUM(cost), 0) as total_cost
+       FROM request_logs
+       WHERE tool_name LIKE ? AND created_at >= ? AND created_at < ? AND profile_key IS NOT NULL
+       GROUP BY profile_key`
+    ).all(toolPrefix, billingMonth + "-01", billingMonth + "-32") as Record<string, unknown>[];
+    return rows.map((r) => ({
+      profileKey: r.profile_key as string,
+      count: r.count as number,
+      totalCost: (r.total_cost as number) ?? 0,
+    }));
   }
 
   // --- Tool Pricing ---

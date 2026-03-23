@@ -39,6 +39,8 @@ const ANONYMOUS_AUTH_CONTEXT: AuthContext = {
     keyHash: "",
     keyPrefix: "",
     quota: 0,
+    allowedTools: null,
+    balance: -1,
     status: "active",
     expiresAt: null,
     createdAt: new Date(),
