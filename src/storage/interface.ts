@@ -190,6 +190,40 @@ export interface UserToolStats {
   totalCost: number;
 }
 
+// --- Dashboard Stats ---
+
+export interface DashboardToolStats {
+  toolName: string;
+  callCount: number;
+  totalCost: number;
+  avgResponseTimeMs: number;
+}
+
+export interface DashboardUserStats {
+  userId: string;
+  username: string | null;
+  callCount: number;
+  totalCost: number;
+}
+
+export interface DashboardRecentError {
+  toolName: string | null;
+  errorMessage: string | null;
+  username: string | null;
+  createdAt: Date;
+}
+
+export interface DashboardStats {
+  totalRequests: number;
+  successCount: number;
+  errorCount: number;
+  avgResponseTimeMs: number;
+  totalCost: number;
+  toolStats: DashboardToolStats[];
+  userStats: DashboardUserStats[];
+  recentErrors: DashboardRecentError[];
+}
+
 // --- Storage Interface ---
 
 export interface IStorage {
@@ -242,6 +276,9 @@ export interface IStorage {
   listUserGroupsByUser(userId: string): Promise<UserGroup[]>;
   getUserEffectiveAllowedTools(userId: string): Promise<string[] | null>;
   getGroupMemberCount(groupId: string): Promise<number>;
+
+  // Dashboard
+  getDashboardStats(): Promise<DashboardStats>;
 
   // Connection logs
   insertConnectionLog(log: CreateConnectionLogInput): Promise<ConnectionLog>;

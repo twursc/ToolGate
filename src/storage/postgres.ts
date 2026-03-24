@@ -23,6 +23,10 @@ import type {
   UsageStats,
   UserToolStats,
   PaginatedResult,
+  DashboardStats,
+  DashboardToolStats,
+  DashboardUserStats,
+  DashboardRecentError,
 } from "./interface.js";
 
 const { Pool } = pg;
@@ -662,6 +666,85 @@ export class PostgresStorage implements IStorage {
       "UPDATE connection_logs SET status = 'offline', disconnected_at = NOW() WHERE status = 'online'"
     );
     return result.rowCount ?? 0;
+  }
+
+  // --- Dashboard Stats ---
+
+  async getDashboardStats(): Promise<DashboardStats> {
+    const overallResult = await this.pool.query(
+      `SELECT
+        COUNT(*)::int as total,
+        SUM(CASE WHEN response_status = 'success' THEN 1 ELSE 0 END)::int as success_count,
+        SUM(CASE WHEN response_status = 'error' THEN 1 ELSE 0 END)::int as error_count,
+        AVG(response_time_ms)::int as avg_response_time,
+        COALESCE(SUM(cost), 0) as total_cost
+      FROM request_logs`
+    );
+    const ov = overallResult.rows[0];
+
+    const toolResult = await this.pool.query(
+      `SELECT
+        tool_name,
+        COUNT(*)::int as call_count,
+        COALESCE(SUM(cost), 0) as total_cost,
+        AVG(response_time_ms)::int as avg_response_time
+      FROM request_logs
+      WHERE tool_name IS NOT NULL
+      GROUP BY tool_name
+      ORDER BY call_count DESC
+      LIMIT 10`
+    );
+    const toolStats: DashboardToolStats[] = toolResult.rows.map((r: Record<string, unknown>) => ({
+      toolName: r.tool_name as string,
+      callCount: r.call_count as number,
+      totalCost: Number(r.total_cost) ?? 0,
+      avgResponseTimeMs: (r.avg_response_time as number) ?? 0,
+    }));
+
+    const userResult = await this.pool.query(
+      `SELECT
+        r.user_id,
+        u.username,
+        COUNT(*)::int as call_count,
+        COALESCE(SUM(r.cost), 0) as total_cost
+      FROM request_logs r
+      LEFT JOIN users u ON r.user_id = u.id
+      GROUP BY r.user_id, u.username
+      ORDER BY total_cost DESC
+      LIMIT 10`
+    );
+    const userStats: DashboardUserStats[] = userResult.rows.map((r: Record<string, unknown>) => ({
+      userId: r.user_id as string,
+      username: (r.username as string) ?? null,
+      callCount: r.call_count as number,
+      totalCost: Number(r.total_cost) ?? 0,
+    }));
+
+    const errorResult = await this.pool.query(
+      `SELECT r.tool_name, r.error_message, u.username, r.created_at
+      FROM request_logs r
+      LEFT JOIN users u ON r.user_id = u.id
+      WHERE r.response_status = 'error'
+      ORDER BY r.created_at DESC
+      LIMIT 5`
+    );
+    const recentErrors: DashboardRecentError[] = errorResult.rows.map((r: Record<string, unknown>) => ({
+      toolName: (r.tool_name as string) ?? null,
+      errorMessage: (r.error_message as string) ?? null,
+      username: (r.username as string) ?? null,
+      createdAt: new Date(r.created_at as string),
+    }));
+
+    return {
+      totalRequests: ov.total ?? 0,
+      successCount: ov.success_count ?? 0,
+      errorCount: ov.error_count ?? 0,
+      avgResponseTimeMs: ov.avg_response_time ?? 0,
+      totalCost: Number(ov.total_cost) ?? 0,
+      toolStats,
+      userStats,
+      recentErrors,
+    };
   }
 
   // --- Lifecycle ---

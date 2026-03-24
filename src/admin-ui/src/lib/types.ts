@@ -124,6 +124,38 @@ export interface GroupDetail extends UserGroup {
   members: GroupMember[];
 }
 
+export interface DashboardToolStats {
+  toolName: string;
+  callCount: number;
+  totalCost: number;
+  avgResponseTimeMs: number;
+}
+
+export interface DashboardUserStats {
+  userId: string;
+  username: string | null;
+  callCount: number;
+  totalCost: number;
+}
+
+export interface DashboardRecentError {
+  toolName: string | null;
+  errorMessage: string | null;
+  username: string | null;
+  createdAt: string;
+}
+
+export interface DashboardStats {
+  totalRequests: number;
+  successCount: number;
+  errorCount: number;
+  avgResponseTimeMs: number;
+  totalCost: number;
+  toolStats: DashboardToolStats[];
+  userStats: DashboardUserStats[];
+  recentErrors: DashboardRecentError[];
+}
+
 export interface ToolSchema {
   name: string;
   description?: string;

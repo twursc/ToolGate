@@ -23,6 +23,10 @@ import type {
   UsageStats,
   UserToolStats,
   PaginatedResult,
+  DashboardStats,
+  DashboardToolStats,
+  DashboardUserStats,
+  DashboardRecentError,
 } from "./interface.js";
 
 export class SqliteStorage implements IStorage {
@@ -672,6 +676,97 @@ export class SqliteStorage implements IStorage {
       "UPDATE connection_logs SET status = 'offline', disconnected_at = ? WHERE status = 'online'"
     ).run(now);
     return result.changes;
+  }
+
+  // --- Dashboard Stats ---
+
+  async getDashboardStats(): Promise<DashboardStats> {
+    // Overall request stats
+    const overallRow = this.db.prepare(
+      `SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN response_status = 'success' THEN 1 ELSE 0 END) as success_count,
+        SUM(CASE WHEN response_status = 'error' THEN 1 ELSE 0 END) as error_count,
+        AVG(response_time_ms) as avg_response_time,
+        SUM(cost) as total_cost
+      FROM request_logs`
+    ).get() as Record<string, unknown>;
+
+    const totalRequests = (overallRow.total as number) ?? 0;
+    const successCount = (overallRow.success_count as number) ?? 0;
+    const errorCount = (overallRow.error_count as number) ?? 0;
+    const avgResponseTimeMs = Math.round((overallRow.avg_response_time as number) ?? 0);
+    const totalCost = (overallRow.total_cost as number) ?? 0;
+
+    // Top 10 tools by call count
+    const toolRows = this.db.prepare(
+      `SELECT
+        tool_name,
+        COUNT(*) as call_count,
+        SUM(cost) as total_cost,
+        AVG(response_time_ms) as avg_response_time
+      FROM request_logs
+      WHERE tool_name IS NOT NULL
+      GROUP BY tool_name
+      ORDER BY call_count DESC
+      LIMIT 10`
+    ).all() as Record<string, unknown>[];
+
+    const toolStats: DashboardToolStats[] = toolRows.map((r) => ({
+      toolName: r.tool_name as string,
+      callCount: r.call_count as number,
+      totalCost: (r.total_cost as number) ?? 0,
+      avgResponseTimeMs: Math.round((r.avg_response_time as number) ?? 0),
+    }));
+
+    // Top 10 users by cost
+    const userRows = this.db.prepare(
+      `SELECT
+        r.user_id,
+        u.username,
+        COUNT(*) as call_count,
+        SUM(r.cost) as total_cost
+      FROM request_logs r
+      LEFT JOIN users u ON r.user_id = u.id
+      GROUP BY r.user_id
+      ORDER BY total_cost DESC
+      LIMIT 10`
+    ).all() as Record<string, unknown>[];
+
+    const userStats: DashboardUserStats[] = userRows.map((r) => ({
+      userId: r.user_id as string,
+      username: (r.username as string) ?? null,
+      callCount: r.call_count as number,
+      totalCost: (r.total_cost as number) ?? 0,
+    }));
+
+    // Recent 5 errors
+    const errorRows = this.db.prepare(
+      `SELECT r.tool_name, r.error_message, u.username, r.created_at
+      FROM request_logs r
+      LEFT JOIN users u ON r.user_id = u.id
+      WHERE r.response_status = 'error'
+      ORDER BY r.created_at DESC
+      LIMIT 5`
+    ).all() as Record<string, unknown>[];
+
+    const recentErrors: DashboardRecentError[] = errorRows.map((r) => ({
+      toolName: (r.tool_name as string) ?? null,
+      errorMessage: (r.error_message as string) ?? null,
+      username: (r.username as string) ?? null,
+      createdAt: new Date(r.created_at as string),
+    }));
+
+    return {
+      totalRequests,
+      successCount,
+      errorCount,
+      avgResponseTimeMs,
+      totalCost,
+      toolStats,
+      userStats,
+      recentErrors,
+    };
   }
 
   // --- Lifecycle ---

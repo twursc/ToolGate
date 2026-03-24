@@ -58,6 +58,7 @@ export function createAdminRouter(storage: IStorage): Router {
 
   // Stats routes
   const statsRouter = createStatsRouter(storage);
+  router.get("/stats/dashboard", authMiddleware, statsRouter.getDashboard);
   router.get("/stats/usage", authMiddleware, statsRouter.getUsage);
   router.get("/stats/users/:id/usage", authMiddleware, statsRouter.getUserUsage);
   router.get("/stats/provider/:key/tool-usage", authMiddleware, statsRouter.getProviderToolUsage);

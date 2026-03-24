@@ -85,6 +85,9 @@ export const getProviderToolUsage = (key: string, params?: Record<string, string
 export const getProfileStats = (key: string, params?: Record<string, string>) =>
   api.get(`/stats/provider/${key}/profile-stats`, { params });
 
+// Dashboard
+export const getDashboardStats = () => api.get("/stats/dashboard");
+
 // Stats
 export const getUsageStats = (params?: Record<string, string>) =>
   api.get("/stats/usage", { params });

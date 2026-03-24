@@ -4,6 +4,17 @@ import { logger } from "../logger.js";
 
 export function createStatsRouter(storage: IStorage) {
   return {
+    // GET /admin/stats/dashboard - Aggregated dashboard stats
+    getDashboard: async (req: Request, res: Response): Promise<void> => {
+      try {
+        const stats = await storage.getDashboardStats();
+        res.json(stats);
+      } catch (e: any) {
+        logger.error(`Failed to get dashboard stats: ${e.message}`);
+        res.status(500).json({ error: e.message });
+      }
+    },
+
     // GET /admin/stats/usage - Get usage statistics with filters
     getUsage: async (req: Request, res: Response): Promise<void> => {
       try {
