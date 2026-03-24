@@ -25,6 +25,12 @@ RUN yarn tsc
 # -- Production stage --
 FROM node:20-alpine
 
+# Install uvx (via uv) and ensure npx is available (npx ships with npm/node)
+RUN apk add --no-cache curl && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    ln -s /root/.local/bin/uv /usr/local/bin/uv && \
+    ln -s /root/.local/bin/uvx /usr/local/bin/uvx
+
 WORKDIR /app
 
 # Copy compiled build output and node_modules from builder
