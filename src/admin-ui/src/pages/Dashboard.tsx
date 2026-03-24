@@ -10,7 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getDashboardStats } from "@/lib/api";
-import { Users, Activity, CheckCircle, DollarSign, Clock } from "lucide-react";
+import { Activity, CheckCircle, DollarSign, Clock } from "lucide-react";
 import type { DashboardStats } from "@/lib/types";
 
 export default function Dashboard() {
