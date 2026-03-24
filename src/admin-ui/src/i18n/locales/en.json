@@ -18,7 +18,7 @@
   "common.results": "{{count}} result(s)",
   "common.page": "Page {{current}} / {{total}}",
 
-  "nav.title": "MCP Gateway",
+  "nav.title": "ToolGate",
   "nav.subtitle": "Admin Panel",
   "nav.dashboard": "Dashboard",
   "nav.users": "Users",
@@ -28,7 +28,7 @@
   "nav.playground": "Playground",
   "nav.signOut": "Sign out",
 
-  "login.title": "MCP Gateway",
+  "login.title": "ToolGate",
   "login.subtitle": "Sign in to the admin panel",
   "login.username": "Username",
   "login.password": "Password",

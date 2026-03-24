@@ -24,8 +24,8 @@ export function LanguageSwitcher() {
       className="w-full justify-start gap-3 text-muted-foreground"
       onClick={toggle}
     >
-      <Languages className="h-4 w-4" />
-      {nextLang.label}
+      <Languages className="h-4 w-4" style={{ paddingRight: 2 }} />
+      <span style={{ paddingLeft: 2 }}>{nextLang.label}</span>
     </Button>
   );
 }
