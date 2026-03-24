@@ -31,6 +31,7 @@ export interface RequestLog {
   userId: string;
   apiKeyId: string;
   method: string;
+  providerKey: string | null;
   toolName: string | null;
   requestSummary: string;
   responseStatus: "success" | "error";
@@ -45,12 +46,14 @@ export interface RequestLog {
 export interface UsageStats {
   userId: string;
   username: string | null;
+  providerKey: string;
   toolName: string;
   count: number;
   totalCost: number;
 }
 
 export interface ToolPrice {
+  providerKey: string;
   toolName: string;
   unitPrice: number;
   updatedAt: string;
@@ -125,6 +128,7 @@ export interface GroupDetail extends UserGroup {
 }
 
 export interface DashboardToolStats {
+  providerKey: string;
   toolName: string;
   callCount: number;
   totalCost: number;
@@ -139,6 +143,7 @@ export interface DashboardUserStats {
 }
 
 export interface DashboardRecentError {
+  providerKey: string | null;
   toolName: string | null;
   errorMessage: string | null;
   username: string | null;

@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import type { IStorage } from "../storage/interface.js";
 import { logger } from "../logger.js";
+import { getCurrentSeparator } from "../proxy/mcp-proxy.js";
 
 export function createBillingMiddleware(storage: IStorage) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -18,11 +19,21 @@ export function createBillingMiddleware(storage: IStorage) {
       return;
     }
 
-    const toolName = req.body?.params?.name;
-    if (!toolName) {
+    const qualifiedName = req.body?.params?.name;
+    if (!qualifiedName) {
       logger.warn(`tools/call without tool name`);
       next();
       return;
+    }
+
+    // Split qualified name into providerKey and toolName
+    const separator = getCurrentSeparator();
+    const sepIndex = qualifiedName.indexOf(separator);
+    let providerKey = "";
+    let toolName = qualifiedName;
+    if (sepIndex >= 0) {
+      providerKey = qualifiedName.substring(0, sepIndex);
+      toolName = qualifiedName.substring(sepIndex + separator.length);
     }
 
     // Check quota before allowing the call
@@ -39,7 +50,7 @@ export function createBillingMiddleware(storage: IStorage) {
     }
 
     // Get tool price
-    const unitPrice = await storage.getToolPrice(toolName);
+    const unitPrice = await storage.getToolPrice(providerKey, toolName);
 
     // Capture original methods to record usage after successful response
     let recorded = false;
@@ -52,6 +63,7 @@ export function createBillingMiddleware(storage: IStorage) {
           storage.insertUsageRecord({
             userId: authContext.userId,
             apiKeyId: authContext.apiKeyId,
+            providerKey,
             toolName,
             unitPrice,
             billingMonth: currentMonth,

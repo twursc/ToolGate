@@ -65,7 +65,7 @@ export function createAdminRouter(storage: IStorage): Router {
   router.get("/stats/provider/:key/profile-stats", authMiddleware, statsRouter.getProfileStats);
   router.get("/logs", authMiddleware, statsRouter.getLogs);
   router.get("/tool-prices", authMiddleware, statsRouter.listToolPrices);
-  router.put("/tool-prices/:toolName", authMiddleware, statsRouter.setToolPrice);
+  router.put("/tool-prices/set", authMiddleware, statsRouter.setToolPrice);
   router.put("/tool-prices", authMiddleware, statsRouter.batchUpdateToolPrices);
 
   // Connection logs routes

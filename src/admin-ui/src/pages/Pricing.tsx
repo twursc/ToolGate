@@ -11,12 +11,14 @@ import { toast } from "sonner";
 import { Save } from "lucide-react";
 
 interface ToolRow {
+  providerKey: string;
   toolName: string;
-  displayName: string;
-  provider: string;
   unitPrice: number;
   updatedAt: string | null;
 }
+
+// Composite key for edits map
+const rowKey = (providerKey: string, toolName: string) => `${providerKey}\0${toolName}`;
 
 export default function PricingPage() {
   const { t } = useTranslation();
@@ -32,35 +34,30 @@ export default function PricingPage() {
     const prices: ToolPrice[] = pricesRes.data;
     const providers: McpProvider[] = providersRes.data;
 
-    // Build price lookup
+    // Build price lookup by providerKey + toolName
     const priceMap = new Map<string, ToolPrice>();
     for (const p of prices) {
-      priceMap.set(p.toolName, p);
+      priceMap.set(rowKey(p.providerKey, p.toolName), p);
     }
 
-    // Build provider key set and detect separator from tool names
-    const providerKeys = new Set(providers.map((p) => p.key));
-
-    // Extract provider key from a qualified tool name by matching known provider keys
-    const parseToolName = (qualifiedName: string): { provider: string; displayName: string } => {
-      for (const pk of providerKeys) {
-        if (qualifiedName.startsWith(pk) && qualifiedName.length > pk.length) {
-          return { provider: pk, displayName: qualifiedName.slice(pk.length + 1) };
-        }
-      }
-      return { provider: "-", displayName: qualifiedName };
-    };
-
-    // Collect all tools from providers (tools are already qualified names)
+    // Collect all tools from providers
     const allTools = new Map<string, ToolRow>();
     for (const prov of providers) {
-      for (const tool of prov.tools) {
-        const existing = priceMap.get(tool);
-        const { displayName } = parseToolName(tool);
-        allTools.set(tool, {
-          toolName: tool,
-          displayName,
-          provider: prov.key,
+      for (const qualifiedTool of prov.tools) {
+        // Extract pure tool name by removing provider prefix + separator
+        const prefix = prov.key;
+        let pureName = qualifiedTool;
+        if (qualifiedTool.startsWith(prefix) && qualifiedTool.length > prefix.length) {
+          // Skip the separator character(s) between provider key and tool name
+          const rest = qualifiedTool.slice(prefix.length);
+          pureName = rest.replace(/^[^a-zA-Z0-9]+/, "");
+        }
+
+        const key = rowKey(prov.key, pureName);
+        const existing = priceMap.get(key);
+        allTools.set(key, {
+          providerKey: prov.key,
+          toolName: pureName,
           unitPrice: existing?.unitPrice ?? 0,
           updatedAt: existing?.updatedAt ?? null,
         });
@@ -69,12 +66,11 @@ export default function PricingPage() {
 
     // Also include prices that don't match any current provider tool
     for (const p of prices) {
-      if (!allTools.has(p.toolName)) {
-        const parsed = parseToolName(p.toolName);
-        allTools.set(p.toolName, {
+      const key = rowKey(p.providerKey, p.toolName);
+      if (!allTools.has(key)) {
+        allTools.set(key, {
+          providerKey: p.providerKey,
           toolName: p.toolName,
-          displayName: parsed.displayName,
-          provider: parsed.provider,
           unitPrice: p.unitPrice,
           updatedAt: p.updatedAt,
         });
@@ -83,7 +79,7 @@ export default function PricingPage() {
 
     // Sort by provider then tool name
     const sorted = Array.from(allTools.values()).sort((a, b) => {
-      if (a.provider !== b.provider) return a.provider.localeCompare(b.provider);
+      if (a.providerKey !== b.providerKey) return a.providerKey.localeCompare(b.providerKey);
       return a.toolName.localeCompare(b.toolName);
     });
 
@@ -95,10 +91,10 @@ export default function PricingPage() {
   const hasEdits = Object.keys(edits).length > 0;
 
   const handleSaveAll = async () => {
-    const prices = Object.entries(edits).map(([toolName, val]) => ({
-      toolName,
-      unitPrice: Number(val),
-    }));
+    const prices = Object.entries(edits).map(([compositeKey, val]) => {
+      const [providerKey, toolName] = compositeKey.split("\0");
+      return { providerKey, toolName, unitPrice: Number(val) };
+    });
     if (prices.length === 0) return;
     setSaving(true);
     try {
@@ -133,24 +129,27 @@ export default function PricingPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.toolName} className={edits[r.toolName] !== undefined ? "bg-muted/50" : ""}>
-                <TableCell className="text-muted-foreground">{r.provider}</TableCell>
-                <TableCell className="font-medium">{r.displayName}</TableCell>
-                <TableCell>
-                  <Input
-                    type="number"
-                    step="0.0001"
-                    className="w-32"
-                    value={edits[r.toolName] ?? String(r.unitPrice)}
-                    onChange={(e) => setEdits({ ...edits, [r.toolName]: e.target.value })}
-                  />
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "-"}
-                </TableCell>
-              </TableRow>
-            ))}
+            {rows.map((r) => {
+              const key = rowKey(r.providerKey, r.toolName);
+              return (
+                <TableRow key={key} className={edits[key] !== undefined ? "bg-muted/50" : ""}>
+                  <TableCell className="text-muted-foreground">{r.providerKey}</TableCell>
+                  <TableCell className="font-medium">{r.toolName}</TableCell>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      step="0.0001"
+                      className="w-32"
+                      value={edits[key] ?? String(r.unitPrice)}
+                      onChange={(e) => setEdits({ ...edits, [key]: e.target.value })}
+                    />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "-"}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
             {rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground py-8">

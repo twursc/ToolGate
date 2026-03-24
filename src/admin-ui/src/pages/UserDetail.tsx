@@ -29,7 +29,7 @@ export default function UserDetail() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", quota: "0" });
   const [newKey, setNewKey] = useState("");
-  const [usage, setUsage] = useState<{ toolName: string; count: number; totalCost: number }[]>([]);
+  const [usage, setUsage] = useState<{ providerKey: string; toolName: string; count: number; totalCost: number }[]>([]);
   const [usageMonth, setUsageMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -236,8 +236,8 @@ export default function UserDetail() {
                 </TableHeader>
                 <TableBody>
                   {usage.map((u) => (
-                    <TableRow key={u.toolName}>
-                      <TableCell>{u.toolName}</TableCell>
+                    <TableRow key={`${u.providerKey}\0${u.toolName}`}>
+                      <TableCell>{u.providerKey ? `${u.providerKey} / ${u.toolName}` : u.toolName}</TableCell>
                       <TableCell className="text-right">{u.count}</TableCell>
                       <TableCell className="text-right">{u.totalCost.toFixed(4)}</TableCell>
                     </TableRow>

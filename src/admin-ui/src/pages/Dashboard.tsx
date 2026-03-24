@@ -111,16 +111,19 @@ export default function Dashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {stats.toolStats.map((tool) => (
-                    <TableRow key={tool.toolName}>
-                      <TableCell className="font-mono text-xs max-w-48 truncate" title={tool.toolName}>
-                        {tool.toolName}
+                  {stats.toolStats.map((tool) => {
+                    const displayName = tool.providerKey ? `${tool.providerKey} / ${tool.toolName}` : tool.toolName;
+                    return (
+                    <TableRow key={`${tool.providerKey}\0${tool.toolName}`}>
+                      <TableCell className="font-mono text-xs max-w-48 truncate" title={displayName}>
+                        {displayName}
                       </TableCell>
                       <TableCell className="text-right">{tool.callCount}</TableCell>
                       <TableCell className="text-right">{tool.avgResponseTimeMs} ms</TableCell>
                       <TableCell className="text-right">${tool.totalCost.toFixed(4)}</TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -184,7 +187,7 @@ export default function Dashboard() {
                       {new Date(err.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell>{err.username ?? "-"}</TableCell>
-                    <TableCell className="font-mono text-xs">{err.toolName ?? "-"}</TableCell>
+                    <TableCell className="font-mono text-xs">{err.providerKey && err.toolName ? `${err.providerKey} / ${err.toolName}` : (err.toolName ?? "-")}</TableCell>
                     <TableCell className="text-xs max-w-96 truncate text-destructive" title={err.errorMessage ?? ""}>
                       {err.errorMessage ?? "-"}
                     </TableCell>

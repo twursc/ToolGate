@@ -101,10 +101,10 @@ export const getRequestLogs = (params?: Record<string, string>) =>
 // Tool Prices
 export const listToolPrices = () => api.get("/tool-prices");
 
-export const setToolPrice = (toolName: string, unitPrice: number) =>
-  api.put(`/tool-prices/${toolName}`, { unitPrice });
+export const setToolPrice = (providerKey: string, toolName: string, unitPrice: number) =>
+  api.put("/tool-prices/set", { providerKey, toolName, unitPrice });
 
-export const batchUpdateToolPrices = (prices: { toolName: string; unitPrice: number }[]) =>
+export const batchUpdateToolPrices = (prices: { providerKey: string; toolName: string; unitPrice: number }[]) =>
   api.put("/tool-prices", { prices });
 
 // Groups

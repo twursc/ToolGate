@@ -56,12 +56,14 @@ export function createPlaygroundRouter(storage: IStorage) {
         const currentMonth = new Date().toISOString().slice(0, 7);
         const profileKey = selectedClient.profileKey ?? null;
 
-        storage.getToolPrice(toolName).then((unitPrice) => {
+        const billingProviderKey = mapping.providerKey;
+        storage.getToolPrice(billingProviderKey, originalToolName).then((unitPrice) => {
           storage.insertRequestLog({
             userId: playgroundUserId,
             apiKeyId: "playground",
             method: "tools/call",
-            toolName,
+            providerKey: billingProviderKey,
+            toolName: originalToolName,
             requestSummary: JSON.stringify(args ?? {}).substring(0, 500),
             responseStatus: "success",
             responseTimeMs,
@@ -73,7 +75,8 @@ export function createPlaygroundRouter(storage: IStorage) {
           storage.insertUsageRecord({
             userId: playgroundUserId,
             apiKeyId: "playground",
-            toolName,
+            providerKey: billingProviderKey,
+            toolName: originalToolName,
             unitPrice,
             billingMonth: currentMonth,
           }).catch((e: any) => logger.error(`Playground usage error: ${e.message}`));

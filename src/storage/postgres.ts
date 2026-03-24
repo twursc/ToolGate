@@ -100,9 +100,11 @@ export class PostgresStorage implements IStorage {
         ON usage_records(tool_name, billing_month);
 
       CREATE TABLE IF NOT EXISTS tool_prices (
-        tool_name VARCHAR(255) PRIMARY KEY,
+        provider_key VARCHAR(255) NOT NULL DEFAULT '',
+        tool_name VARCHAR(255) NOT NULL,
         unit_price DECIMAL(10,4) NOT NULL DEFAULT 0,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (provider_key, tool_name)
       );
     `);
 
@@ -113,6 +115,28 @@ export class PostgresStorage implements IStorage {
         ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS balance DECIMAL(10,4) DEFAULT -1;
         ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS cost DECIMAL(10,4) DEFAULT 0;
         ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS profile_key VARCHAR(255) DEFAULT NULL;
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS provider_key VARCHAR(255) DEFAULT NULL;
+        ALTER TABLE usage_records ADD COLUMN IF NOT EXISTS provider_key VARCHAR(255) NOT NULL DEFAULT '';
+      END $$;
+    `);
+
+    // Migrate tool_prices to composite primary key if needed
+    await this.pool.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE table_name = 'tool_prices' AND constraint_type = 'PRIMARY KEY'
+          AND constraint_name IN (
+            SELECT constraint_name FROM information_schema.key_column_usage
+            WHERE table_name = 'tool_prices'
+            GROUP BY constraint_name
+            HAVING COUNT(*) = 1
+          )
+        ) THEN
+          ALTER TABLE tool_prices ADD COLUMN IF NOT EXISTS provider_key VARCHAR(255) NOT NULL DEFAULT '';
+          ALTER TABLE tool_prices DROP CONSTRAINT tool_prices_pkey;
+          ALTER TABLE tool_prices ADD PRIMARY KEY (provider_key, tool_name);
+        END IF;
       END $$;
     `);
 
@@ -191,6 +215,7 @@ export class PostgresStorage implements IStorage {
       userId: row.user_id as string,
       apiKeyId: row.api_key_id as string,
       method: row.method as string,
+      providerKey: (row.provider_key as string) ?? null,
       toolName: (row.tool_name as string) ?? null,
       requestSummary: row.request_summary as string,
       responseStatus: row.response_status as "success" | "error",
@@ -312,9 +337,9 @@ export class PostgresStorage implements IStorage {
   async insertRequestLog(log: Omit<RequestLog, "id" | "createdAt"> & { createdAt?: Date }): Promise<void> {
     const id = uuidv4();
     await this.pool.query(
-      `INSERT INTO request_logs (id, user_id, api_key_id, method, tool_name, request_summary, response_status, response_time_ms, error_message, cost, profile_key)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [id, log.userId, log.apiKeyId, log.method, log.toolName, log.requestSummary, log.responseStatus, log.responseTimeMs, log.errorMessage, log.cost ?? 0, log.profileKey ?? null]
+      `INSERT INTO request_logs (id, user_id, api_key_id, method, provider_key, tool_name, request_summary, response_status, response_time_ms, error_message, cost, profile_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [id, log.userId, log.apiKeyId, log.method, log.providerKey ?? null, log.toolName, log.requestSummary, log.responseStatus, log.responseTimeMs, log.errorMessage, log.cost ?? 0, log.profileKey ?? null]
     );
   }
 
@@ -350,9 +375,9 @@ export class PostgresStorage implements IStorage {
   async insertUsageRecord(record: Omit<UsageRecord, "id" | "createdAt">): Promise<void> {
     const id = uuidv4();
     await this.pool.query(
-      `INSERT INTO usage_records (id, user_id, api_key_id, tool_name, unit_price, billing_month)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, record.userId, record.apiKeyId, record.toolName, record.unitPrice, record.billingMonth]
+      `INSERT INTO usage_records (id, user_id, api_key_id, provider_key, tool_name, unit_price, billing_month)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, record.userId, record.apiKeyId, record.providerKey, record.toolName, record.unitPrice, record.billingMonth]
     );
   }
 
@@ -361,14 +386,14 @@ export class PostgresStorage implements IStorage {
     const values: unknown[] = [];
     let idx = 1;
     if (filter.userId) { conditions.push(`r.user_id = $${idx++}`); values.push(filter.userId); }
+    if (filter.providerKey) { conditions.push(`r.provider_key = $${idx++}`); values.push(filter.providerKey); }
     if (filter.toolName) { conditions.push(`r.tool_name = $${idx++}`); values.push(filter.toolName); }
-    if (filter.toolNamePrefix) { conditions.push(`r.tool_name LIKE $${idx++}`); values.push(filter.toolNamePrefix + "%"); }
     if (filter.billingMonth) { conditions.push(`r.billing_month = $${idx++}`); values.push(filter.billingMonth); }
     if (filter.startDate) { conditions.push(`r.created_at >= $${idx++}`); values.push(filter.startDate); }
     if (filter.endDate) { conditions.push(`r.created_at <= $${idx++}`); values.push(filter.endDate); }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const countResult = await this.pool.query(
-      `SELECT COUNT(*)::int as cnt FROM (SELECT 1 FROM usage_records r ${where} GROUP BY r.user_id, r.tool_name) sub`,
+      `SELECT COUNT(*)::int as cnt FROM (SELECT 1 FROM usage_records r ${where} GROUP BY r.user_id, r.provider_key, r.tool_name) sub`,
       values
     );
     const total = countResult.rows[0]?.cnt ?? 0;
@@ -376,14 +401,15 @@ export class PostgresStorage implements IStorage {
     const offset = filter.offset ?? 0;
     const dataValues = [...values, limit, offset];
     const { rows } = await this.pool.query(
-      `SELECT r.user_id, r.tool_name, COUNT(*)::int as count, COALESCE(SUM(r.unit_price), 0)::float as total_cost, u.username
-       FROM usage_records r LEFT JOIN users u ON r.user_id = u.id ${where} GROUP BY r.user_id, r.tool_name, u.username ORDER BY count DESC LIMIT $${idx++} OFFSET $${idx}`,
+      `SELECT r.user_id, r.provider_key, r.tool_name, COUNT(*)::int as count, COALESCE(SUM(r.unit_price), 0)::float as total_cost, u.username
+       FROM usage_records r LEFT JOIN users u ON r.user_id = u.id ${where} GROUP BY r.user_id, r.provider_key, r.tool_name, u.username ORDER BY count DESC LIMIT $${idx++} OFFSET $${idx}`,
       dataValues
     );
     return {
       data: rows.map((r: Record<string, unknown>) => ({
         userId: r.user_id as string,
         username: (r.username as string) ?? null,
+        providerKey: (r.provider_key as string) ?? "",
         toolName: r.tool_name as string,
         count: r.count as number,
         totalCost: r.total_cost as number,
@@ -401,11 +427,12 @@ export class PostgresStorage implements IStorage {
     if (filter.endDate) { conditions.push(`created_at <= $${idx++}`); values.push(filter.endDate); }
     const where = `WHERE ${conditions.join(" AND ")}`;
     const { rows } = await this.pool.query(
-      `SELECT tool_name, COUNT(*)::int as count, COALESCE(SUM(unit_price), 0)::float as total_cost
-       FROM usage_records ${where} GROUP BY tool_name ORDER BY count DESC`,
+      `SELECT provider_key, tool_name, COUNT(*)::int as count, COALESCE(SUM(unit_price), 0)::float as total_cost
+       FROM usage_records ${where} GROUP BY provider_key, tool_name ORDER BY count DESC`,
       values
     );
     return rows.map((r: Record<string, unknown>) => ({
+      providerKey: (r.provider_key as string) ?? "",
       toolName: r.tool_name as string,
       count: r.count as number,
       totalCost: r.total_cost as number,
@@ -423,13 +450,12 @@ export class PostgresStorage implements IStorage {
   // --- Profile Stats ---
 
   async getProfileStats(providerKey: string, billingMonth: string): Promise<{ profileKey: string; count: number; totalCost: number }[]> {
-    const toolPrefix = providerKey + "__%";
     const { rows } = await this.pool.query(
       `SELECT profile_key, COUNT(*)::int as count, COALESCE(SUM(cost), 0)::float as total_cost
        FROM request_logs
-       WHERE tool_name LIKE $1 AND created_at >= ($2 || '-01')::date AND created_at < (($2 || '-01')::date + interval '1 month') AND profile_key IS NOT NULL
+       WHERE provider_key = $1 AND created_at >= ($2 || '-01')::date AND created_at < (($2 || '-01')::date + interval '1 month') AND profile_key IS NOT NULL
        GROUP BY profile_key`,
-      [toolPrefix, billingMonth]
+      [providerKey, billingMonth]
     );
     return rows.map((r: Record<string, unknown>) => ({
       profileKey: r.profile_key as string,
@@ -440,37 +466,38 @@ export class PostgresStorage implements IStorage {
 
   // --- Tool Pricing ---
 
-  async setToolPrice(toolName: string, unitPrice: number): Promise<void> {
+  async setToolPrice(providerKey: string, toolName: string, unitPrice: number): Promise<void> {
     await this.pool.query(
-      `INSERT INTO tool_prices (tool_name, unit_price, updated_at) VALUES ($1, $2, NOW())
-       ON CONFLICT(tool_name) DO UPDATE SET unit_price = EXCLUDED.unit_price, updated_at = NOW()`,
-      [toolName, unitPrice]
+      `INSERT INTO tool_prices (provider_key, tool_name, unit_price, updated_at) VALUES ($1, $2, $3, NOW())
+       ON CONFLICT(provider_key, tool_name) DO UPDATE SET unit_price = EXCLUDED.unit_price, updated_at = NOW()`,
+      [providerKey, toolName, unitPrice]
     );
   }
 
-  async getToolPrice(toolName: string): Promise<number> {
-    const { rows } = await this.pool.query("SELECT unit_price FROM tool_prices WHERE tool_name = $1", [toolName]);
+  async getToolPrice(providerKey: string, toolName: string): Promise<number> {
+    const { rows } = await this.pool.query("SELECT unit_price FROM tool_prices WHERE provider_key = $1 AND tool_name = $2", [providerKey, toolName]);
     return rows[0] ? Number(rows[0].unit_price) : 0;
   }
 
   async listToolPrices(): Promise<ToolPrice[]> {
-    const { rows } = await this.pool.query("SELECT * FROM tool_prices ORDER BY tool_name");
+    const { rows } = await this.pool.query("SELECT * FROM tool_prices ORDER BY provider_key, tool_name");
     return rows.map((r: Record<string, unknown>) => ({
+      providerKey: (r.provider_key as string) ?? "",
       toolName: r.tool_name as string,
       unitPrice: Number(r.unit_price),
       updatedAt: new Date(r.updated_at as string),
     }));
   }
 
-  async batchUpdateToolPrices(prices: { toolName: string; unitPrice: number }[]): Promise<void> {
+  async batchUpdateToolPrices(prices: { providerKey: string; toolName: string; unitPrice: number }[]): Promise<void> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
       for (const p of prices) {
         await client.query(
-          `INSERT INTO tool_prices (tool_name, unit_price, updated_at) VALUES ($1, $2, NOW())
-           ON CONFLICT(tool_name) DO UPDATE SET unit_price = EXCLUDED.unit_price, updated_at = NOW()`,
-          [p.toolName, p.unitPrice]
+          `INSERT INTO tool_prices (provider_key, tool_name, unit_price, updated_at) VALUES ($1, $2, $3, NOW())
+           ON CONFLICT(provider_key, tool_name) DO UPDATE SET unit_price = EXCLUDED.unit_price, updated_at = NOW()`,
+          [p.providerKey, p.toolName, p.unitPrice]
         );
       }
       await client.query("COMMIT");
@@ -684,17 +711,19 @@ export class PostgresStorage implements IStorage {
 
     const toolResult = await this.pool.query(
       `SELECT
+        provider_key,
         tool_name,
         COUNT(*)::int as call_count,
         COALESCE(SUM(cost), 0) as total_cost,
         AVG(response_time_ms)::int as avg_response_time
       FROM request_logs
       WHERE tool_name IS NOT NULL
-      GROUP BY tool_name
+      GROUP BY provider_key, tool_name
       ORDER BY call_count DESC
       LIMIT 10`
     );
     const toolStats: DashboardToolStats[] = toolResult.rows.map((r: Record<string, unknown>) => ({
+      providerKey: (r.provider_key as string) ?? "",
       toolName: r.tool_name as string,
       callCount: r.call_count as number,
       totalCost: Number(r.total_cost) ?? 0,
@@ -721,7 +750,7 @@ export class PostgresStorage implements IStorage {
     }));
 
     const errorResult = await this.pool.query(
-      `SELECT r.tool_name, r.error_message, u.username, r.created_at
+      `SELECT r.provider_key, r.tool_name, r.error_message, u.username, r.created_at
       FROM request_logs r
       LEFT JOIN users u ON r.user_id = u.id
       WHERE r.response_status = 'error'
@@ -729,6 +758,7 @@ export class PostgresStorage implements IStorage {
       LIMIT 5`
     );
     const recentErrors: DashboardRecentError[] = errorResult.rows.map((r: Record<string, unknown>) => ({
+      providerKey: (r.provider_key as string) ?? null,
       toolName: (r.tool_name as string) ?? null,
       errorMessage: (r.error_message as string) ?? null,
       username: (r.username as string) ?? null,

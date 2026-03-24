@@ -142,6 +142,7 @@ export default function StatsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("stats.username")}</TableHead>
+                  <TableHead>{t("stats.provider")}</TableHead>
                   <TableHead>{t("stats.toolName")}</TableHead>
                   <TableHead className="text-right">{t("stats.callCount")}</TableHead>
                   <TableHead className="text-right">{t("stats.totalCost")}</TableHead>
@@ -151,6 +152,7 @@ export default function StatsPage() {
                 {stats.map((s, i) => (
                   <TableRow key={i}>
                     <TableCell className="text-sm">{s.username ?? s.userId}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{s.providerKey}</TableCell>
                     <TableCell>{s.toolName}</TableCell>
                     <TableCell className="text-right">{s.count}</TableCell>
                     <TableCell className="text-right">{s.totalCost.toFixed(4)}</TableCell>
@@ -158,7 +160,7 @@ export default function StatsPage() {
                 ))}
                 {stats.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       {t("stats.noUsage")}
                     </TableCell>
                   </TableRow>
@@ -216,7 +218,7 @@ export default function StatsPage() {
                     </TableCell>
                     <TableCell className="text-sm">{l.username || "-"}</TableCell>
                     <TableCell>{l.method}</TableCell>
-                    <TableCell>{l.toolName || "-"}</TableCell>
+                    <TableCell>{l.providerKey && l.toolName ? `${l.providerKey} / ${l.toolName}` : (l.toolName || "-")}</TableCell>
                     <TableCell className="max-w-[200px]">
                       <div className="flex items-center gap-1">
                         <span className="truncate text-xs text-muted-foreground">{l.requestSummary || "-"}</span>

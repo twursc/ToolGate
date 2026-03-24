@@ -21,7 +21,7 @@ export function createStatsRouter(storage: IStorage) {
         const filter: UsageFilter = {};
         if (req.query.userId) filter.userId = req.query.userId as string;
         if (req.query.toolName) filter.toolName = req.query.toolName as string;
-        if (req.query.provider) filter.toolNamePrefix = (req.query.provider as string) + "__";
+        if (req.query.provider) filter.providerKey = req.query.provider as string;
         if (req.query.billingMonth) filter.billingMonth = req.query.billingMonth as string;
         if (req.query.startDate) filter.startDate = new Date(req.query.startDate as string);
         if (req.query.endDate) filter.endDate = new Date(req.query.endDate as string);
@@ -78,9 +78,7 @@ export function createStatsRouter(storage: IStorage) {
       try {
         const providerKey = req.params.key;
         const billingMonth = (req.query.billingMonth as string) || new Date().toISOString().slice(0, 7);
-        const toolNamePrefix = providerKey + "__";
-
-        const filter: UsageFilter = { toolNamePrefix, billingMonth, limit: 10000, offset: 0 };
+        const filter: UsageFilter = { providerKey, billingMonth, limit: 10000, offset: 0 };
         const usageResult = await storage.getUsageStats(filter);
 
         res.json({
@@ -117,11 +115,15 @@ export function createStatsRouter(storage: IStorage) {
       }
     },
 
-    // PUT /admin/tool-prices/:toolName - Set tool price
+    // PUT /admin/tool-prices/set - Set tool price
     setToolPrice: async (req: Request, res: Response): Promise<void> => {
       try {
-        const { toolName } = req.params;
-        const { unitPrice } = req.body;
+        const { providerKey, toolName, unitPrice } = req.body;
+
+        if (!providerKey || !toolName) {
+          res.status(400).json({ error: "providerKey and toolName are required" });
+          return;
+        }
 
         if (unitPrice === undefined || unitPrice === null) {
           res.status(400).json({ error: "unitPrice is required" });
@@ -133,9 +135,9 @@ export function createStatsRouter(storage: IStorage) {
           return;
         }
 
-        await storage.setToolPrice(toolName, unitPrice);
-        logger.info(`Tool price set: ${toolName} = ${unitPrice}`);
-        res.json({ success: true, toolName, unitPrice });
+        await storage.setToolPrice(providerKey, toolName, unitPrice);
+        logger.info(`Tool price set: ${providerKey}/${toolName} = ${unitPrice}`);
+        res.json({ success: true, providerKey, toolName, unitPrice });
       } catch (e: any) {
         logger.error(`Failed to set tool price: ${e.message}`);
         res.status(500).json({ error: e.message });
@@ -154,8 +156,8 @@ export function createStatsRouter(storage: IStorage) {
 
         // Validate each price entry
         for (const p of prices) {
-          if (!p.toolName || typeof p.unitPrice !== "number") {
-            res.status(400).json({ error: "Each price must have toolName (string) and unitPrice (number)" });
+          if (!p.providerKey || !p.toolName || typeof p.unitPrice !== "number") {
+            res.status(400).json({ error: "Each price must have providerKey (string), toolName (string) and unitPrice (number)" });
             return;
           }
         }

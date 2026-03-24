@@ -44,6 +44,7 @@ export function createLoggingMiddleware(storage: IStorage) {
             userId: authContext.userId,
             apiKeyId: authContext.apiKeyId,
             method,
+            providerKey: null,
             toolName,
             requestSummary,
             responseStatus,

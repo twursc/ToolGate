@@ -78,6 +78,7 @@ let currentProxyConfig: Omit<ProxyConfig, "serverToolnameSeparator"> = {
 };
 
 let currentSeparator = "__";
+export function getCurrentSeparator() { return currentSeparator; }
 let gOnToolCall: ((ctx: ToolCallContext) => Promise<ToolCallResult | void>) | undefined;
 let gStorage: IStorage | undefined;
 
@@ -528,13 +529,15 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
           const profileKey = selectedClient.profileKey ?? null;
 
           // Insert usage record for billing + request log
-          gStorage.getToolPrice(name).then((unitPrice) => {
+          const billingProviderKey = mapping.providerKey;
+          gStorage.getToolPrice(billingProviderKey, originalToolName).then((unitPrice) => {
             // Insert request log with cost
             gStorage!.insertRequestLog({
               userId,
               apiKeyId,
               method: "tools/call",
-              toolName: name,
+              providerKey: billingProviderKey,
+              toolName: originalToolName,
               requestSummary,
               responseStatus: "success",
               responseTimeMs,
@@ -546,7 +549,8 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
             gStorage!.insertUsageRecord({
               userId,
               apiKeyId,
-              toolName: name,
+              providerKey: billingProviderKey,
+              toolName: originalToolName,
               unitPrice,
               billingMonth: currentMonth,
             }).catch((e: any) => logger.error(`Failed to record usage: ${e.message}`));
@@ -574,7 +578,8 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
               userId,
               apiKeyId,
               method: "tools/call",
-              toolName: name,
+              providerKey: mapping.providerKey,
+              toolName: originalToolName,
               requestSummary: JSON.stringify(args ?? {}).substring(0, 500),
               responseStatus: "error",
               responseTimeMs,
@@ -626,7 +631,8 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
         userId,
         apiKeyId,
         method: "tools/call",
-        toolName: name,
+        providerKey: mapping.providerKey,
+        toolName: originalToolName,
         requestSummary: JSON.stringify(args ?? {}).substring(0, 500),
         responseStatus: "error",
         responseTimeMs,

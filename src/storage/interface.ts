@@ -29,6 +29,7 @@ export interface RequestLog {
   userId: string;
   apiKeyId: string;
   method: string;
+  providerKey: string | null;
   toolName: string | null;
   requestSummary: string;
   responseStatus: "success" | "error";
@@ -43,6 +44,7 @@ export interface UsageRecord {
   id: string;
   userId: string;
   apiKeyId: string;
+  providerKey: string;
   toolName: string;
   unitPrice: number;
   billingMonth: string; // "YYYY-MM"
@@ -50,6 +52,7 @@ export interface UsageRecord {
 }
 
 export interface ToolPrice {
+  providerKey: string;
   toolName: string;
   unitPrice: number;
   updatedAt: Date;
@@ -149,8 +152,8 @@ export interface LogFilter {
 
 export interface UsageFilter {
   userId?: string;
+  providerKey?: string;
   toolName?: string;
-  toolNamePrefix?: string;
   startDate?: Date;
   endDate?: Date;
   billingMonth?: string;
@@ -179,12 +182,14 @@ export interface RequestLogWithUser extends RequestLog {
 export interface UsageStats {
   userId: string;
   username: string | null;
+  providerKey: string;
   toolName: string;
   count: number;
   totalCost: number;
 }
 
 export interface UserToolStats {
+  providerKey: string;
   toolName: string;
   count: number;
   totalCost: number;
@@ -193,6 +198,7 @@ export interface UserToolStats {
 // --- Dashboard Stats ---
 
 export interface DashboardToolStats {
+  providerKey: string;
   toolName: string;
   callCount: number;
   totalCost: number;
@@ -207,6 +213,7 @@ export interface DashboardUserStats {
 }
 
 export interface DashboardRecentError {
+  providerKey: string | null;
   toolName: string | null;
   errorMessage: string | null;
   username: string | null;
@@ -259,10 +266,10 @@ export interface IStorage {
   getProfileStats(providerKey: string, billingMonth: string): Promise<{ profileKey: string; count: number; totalCost: number }[]>;
 
   // Tool pricing
-  setToolPrice(toolName: string, unitPrice: number): Promise<void>;
-  getToolPrice(toolName: string): Promise<number>;
+  setToolPrice(providerKey: string, toolName: string, unitPrice: number): Promise<void>;
+  getToolPrice(providerKey: string, toolName: string): Promise<number>;
   listToolPrices(): Promise<ToolPrice[]>;
-  batchUpdateToolPrices(prices: { toolName: string; unitPrice: number }[]): Promise<void>;
+  batchUpdateToolPrices(prices: { providerKey: string; toolName: string; unitPrice: number }[]): Promise<void>;
 
   // User groups
   createUserGroup(input: CreateUserGroupInput): Promise<UserGroup>;

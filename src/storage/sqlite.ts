@@ -93,9 +93,11 @@ export class SqliteStorage implements IStorage {
         ON usage_records(tool_name, billing_month);
 
       CREATE TABLE IF NOT EXISTS tool_prices (
-        tool_name TEXT PRIMARY KEY,
+        provider_key TEXT NOT NULL DEFAULT '',
+        tool_name TEXT NOT NULL,
         unit_price REAL NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (provider_key, tool_name)
       );
     `);
 
@@ -158,6 +160,34 @@ export class SqliteStorage implements IStorage {
     if (!logColNames.includes("profile_key")) {
       this.db.exec("ALTER TABLE request_logs ADD COLUMN profile_key TEXT DEFAULT NULL");
     }
+    if (!logColNames.includes("provider_key")) {
+      this.db.exec("ALTER TABLE request_logs ADD COLUMN provider_key TEXT DEFAULT NULL");
+    }
+
+    const usageCols = this.db.prepare("PRAGMA table_info(usage_records)").all() as { name: string }[];
+    const usageColNames = usageCols.map((c) => c.name);
+    if (!usageColNames.includes("provider_key")) {
+      this.db.exec("ALTER TABLE usage_records ADD COLUMN provider_key TEXT NOT NULL DEFAULT ''");
+    }
+
+    // Migrate tool_prices to composite primary key if needed
+    const tpCols = this.db.prepare("PRAGMA table_info(tool_prices)").all() as { name: string }[];
+    const tpColNames = tpCols.map((c) => c.name);
+    if (!tpColNames.includes("provider_key")) {
+      this.db.exec(`
+        CREATE TABLE tool_prices_new (
+          provider_key TEXT NOT NULL DEFAULT '',
+          tool_name TEXT NOT NULL,
+          unit_price REAL NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (provider_key, tool_name)
+        );
+        INSERT INTO tool_prices_new (provider_key, tool_name, unit_price, updated_at)
+          SELECT '', tool_name, unit_price, updated_at FROM tool_prices;
+        DROP TABLE tool_prices;
+        ALTER TABLE tool_prices_new RENAME TO tool_prices;
+      `);
+    }
   }
 
   // PLACEHOLDER_METHODS
@@ -197,6 +227,7 @@ export class SqliteStorage implements IStorage {
       userId: row.user_id as string,
       apiKeyId: row.api_key_id as string,
       method: row.method as string,
+      providerKey: (row.provider_key as string) ?? null,
       toolName: (row.tool_name as string) ?? null,
       requestSummary: row.request_summary as string,
       responseStatus: row.response_status as "success" | "error",
@@ -220,6 +251,7 @@ export class SqliteStorage implements IStorage {
       id: row.id as string,
       userId: row.user_id as string,
       apiKeyId: row.api_key_id as string,
+      providerKey: (row.provider_key as string) ?? "",
       toolName: row.tool_name as string,
       unitPrice: row.unit_price as number,
       billingMonth: row.billing_month as string,
@@ -334,9 +366,9 @@ export class SqliteStorage implements IStorage {
     const id = uuidv4();
     const now = (log.createdAt ?? new Date()).toISOString();
     this.db.prepare(
-      `INSERT INTO request_logs (id, user_id, api_key_id, method, tool_name, request_summary, response_status, response_time_ms, error_message, cost, profile_key, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, log.userId, log.apiKeyId, log.method, log.toolName, log.requestSummary, log.responseStatus, log.responseTimeMs, log.errorMessage, log.cost ?? 0, log.profileKey ?? null, now);
+      `INSERT INTO request_logs (id, user_id, api_key_id, method, provider_key, tool_name, request_summary, response_status, response_time_ms, error_message, cost, profile_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, log.userId, log.apiKeyId, log.method, log.providerKey ?? null, log.toolName, log.requestSummary, log.responseStatus, log.responseTimeMs, log.errorMessage, log.cost ?? 0, log.profileKey ?? null, now);
   }
 
   async queryRequestLogs(filter: LogFilter): Promise<PaginatedResult<RequestLogWithUser>> {
@@ -369,17 +401,17 @@ export class SqliteStorage implements IStorage {
     const id = uuidv4();
     const now = new Date().toISOString();
     this.db.prepare(
-      `INSERT INTO usage_records (id, user_id, api_key_id, tool_name, unit_price, billing_month, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, record.userId, record.apiKeyId, record.toolName, record.unitPrice, record.billingMonth, now);
+      `INSERT INTO usage_records (id, user_id, api_key_id, provider_key, tool_name, unit_price, billing_month, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, record.userId, record.apiKeyId, record.providerKey, record.toolName, record.unitPrice, record.billingMonth, now);
   }
 
   async getUsageStats(filter: UsageFilter): Promise<PaginatedResult<UsageStats>> {
     const conditions: string[] = [];
     const values: unknown[] = [];
     if (filter.userId) { conditions.push("r.user_id = ?"); values.push(filter.userId); }
+    if (filter.providerKey) { conditions.push("r.provider_key = ?"); values.push(filter.providerKey); }
     if (filter.toolName) { conditions.push("r.tool_name = ?"); values.push(filter.toolName); }
-    if (filter.toolNamePrefix) { conditions.push("r.tool_name LIKE ?"); values.push(filter.toolNamePrefix + "%"); }
     if (filter.billingMonth) { conditions.push("r.billing_month = ?"); values.push(filter.billingMonth); }
     if (filter.startDate) { conditions.push("r.created_at >= ?"); values.push(filter.startDate.toISOString()); }
     if (filter.endDate) { conditions.push("r.created_at <= ?"); values.push(filter.endDate.toISOString()); }
@@ -387,19 +419,20 @@ export class SqliteStorage implements IStorage {
     const limit = filter.limit ?? 100;
     const offset = filter.offset ?? 0;
     const totalRow = this.db.prepare(
-      `SELECT COUNT(*) as cnt FROM (SELECT 1 FROM usage_records r ${where} GROUP BY r.user_id, r.tool_name)`
+      `SELECT COUNT(*) as cnt FROM (SELECT 1 FROM usage_records r ${where} GROUP BY r.user_id, r.provider_key, r.tool_name)`
     ).get(...values) as Record<string, unknown>;
     const total = (totalRow?.cnt as number) ?? 0;
     const rows = this.db.prepare(
-      `SELECT r.user_id, r.tool_name, COUNT(*) as count, SUM(r.unit_price) as total_cost, u.username
+      `SELECT r.user_id, r.provider_key, r.tool_name, COUNT(*) as count, SUM(r.unit_price) as total_cost, u.username
        FROM usage_records r LEFT JOIN users u ON r.user_id = u.id ${where}
-       GROUP BY r.user_id, r.tool_name
+       GROUP BY r.user_id, r.provider_key, r.tool_name
        ORDER BY count DESC LIMIT ? OFFSET ?`
     ).all(...values, limit, offset) as Record<string, unknown>[];
     return {
       data: rows.map((r) => ({
         userId: r.user_id as string,
         username: (r.username as string) ?? null,
+        providerKey: (r.provider_key as string) ?? "",
         toolName: r.tool_name as string,
         count: r.count as number,
         totalCost: (r.total_cost as number) ?? 0,
@@ -416,12 +449,13 @@ export class SqliteStorage implements IStorage {
     if (filter.endDate) { conditions.push("created_at <= ?"); values.push(filter.endDate.toISOString()); }
     const where = `WHERE ${conditions.join(" AND ")}`;
     const rows = this.db.prepare(
-      `SELECT tool_name, COUNT(*) as count, SUM(unit_price) as total_cost
+      `SELECT provider_key, tool_name, COUNT(*) as count, SUM(unit_price) as total_cost
        FROM usage_records ${where}
-       GROUP BY tool_name
+       GROUP BY provider_key, tool_name
        ORDER BY count DESC`
     ).all(...values) as Record<string, unknown>[];
     return rows.map((r) => ({
+      providerKey: (r.provider_key as string) ?? "",
       toolName: r.tool_name as string,
       count: r.count as number,
       totalCost: (r.total_cost as number) ?? 0,
@@ -438,13 +472,12 @@ export class SqliteStorage implements IStorage {
   // --- Profile Stats ---
 
   async getProfileStats(providerKey: string, billingMonth: string): Promise<{ profileKey: string; count: number; totalCost: number }[]> {
-    const toolPrefix = providerKey + "__%";
     const rows = this.db.prepare(
       `SELECT profile_key, COUNT(*) as count, COALESCE(SUM(cost), 0) as total_cost
        FROM request_logs
-       WHERE tool_name LIKE ? AND created_at >= ? AND created_at < ? AND profile_key IS NOT NULL
+       WHERE provider_key = ? AND created_at >= ? AND created_at < ? AND profile_key IS NOT NULL
        GROUP BY profile_key`
-    ).all(toolPrefix, billingMonth + "-01", billingMonth + "-32") as Record<string, unknown>[];
+    ).all(providerKey, billingMonth + "-01", billingMonth + "-32") as Record<string, unknown>[];
     return rows.map((r) => ({
       profileKey: r.profile_key as string,
       count: r.count as number,
@@ -454,37 +487,38 @@ export class SqliteStorage implements IStorage {
 
   // --- Tool Pricing ---
 
-  async setToolPrice(toolName: string, unitPrice: number): Promise<void> {
+  async setToolPrice(providerKey: string, toolName: string, unitPrice: number): Promise<void> {
     const now = new Date().toISOString();
     this.db.prepare(
-      `INSERT INTO tool_prices (tool_name, unit_price, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(tool_name) DO UPDATE SET unit_price = excluded.unit_price, updated_at = excluded.updated_at`
-    ).run(toolName, unitPrice, now);
+      `INSERT INTO tool_prices (provider_key, tool_name, unit_price, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(provider_key, tool_name) DO UPDATE SET unit_price = excluded.unit_price, updated_at = excluded.updated_at`
+    ).run(providerKey, toolName, unitPrice, now);
   }
 
-  async getToolPrice(toolName: string): Promise<number> {
-    const row = this.db.prepare("SELECT unit_price FROM tool_prices WHERE tool_name = ?").get(toolName) as Record<string, unknown> | undefined;
+  async getToolPrice(providerKey: string, toolName: string): Promise<number> {
+    const row = this.db.prepare("SELECT unit_price FROM tool_prices WHERE provider_key = ? AND tool_name = ?").get(providerKey, toolName) as Record<string, unknown> | undefined;
     return row ? (row.unit_price as number) : 0;
   }
 
   async listToolPrices(): Promise<ToolPrice[]> {
-    const rows = this.db.prepare("SELECT * FROM tool_prices ORDER BY tool_name").all() as Record<string, unknown>[];
+    const rows = this.db.prepare("SELECT * FROM tool_prices ORDER BY provider_key, tool_name").all() as Record<string, unknown>[];
     return rows.map((r) => ({
+      providerKey: (r.provider_key as string) ?? "",
       toolName: r.tool_name as string,
       unitPrice: r.unit_price as number,
       updatedAt: new Date(r.updated_at as string),
     }));
   }
 
-  async batchUpdateToolPrices(prices: { toolName: string; unitPrice: number }[]): Promise<void> {
+  async batchUpdateToolPrices(prices: { providerKey: string; toolName: string; unitPrice: number }[]): Promise<void> {
     const now = new Date().toISOString();
     const stmt = this.db.prepare(
-      `INSERT INTO tool_prices (tool_name, unit_price, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(tool_name) DO UPDATE SET unit_price = excluded.unit_price, updated_at = excluded.updated_at`
+      `INSERT INTO tool_prices (provider_key, tool_name, unit_price, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(provider_key, tool_name) DO UPDATE SET unit_price = excluded.unit_price, updated_at = excluded.updated_at`
     );
-    const transaction = this.db.transaction((items: { toolName: string; unitPrice: number }[]) => {
+    const transaction = this.db.transaction((items: { providerKey: string; toolName: string; unitPrice: number }[]) => {
       for (const item of items) {
-        stmt.run(item.toolName, item.unitPrice, now);
+        stmt.run(item.providerKey, item.toolName, item.unitPrice, now);
       }
     });
     transaction(prices);
@@ -701,18 +735,20 @@ export class SqliteStorage implements IStorage {
     // Top 10 tools by call count
     const toolRows = this.db.prepare(
       `SELECT
+        provider_key,
         tool_name,
         COUNT(*) as call_count,
         SUM(cost) as total_cost,
         AVG(response_time_ms) as avg_response_time
       FROM request_logs
       WHERE tool_name IS NOT NULL
-      GROUP BY tool_name
+      GROUP BY provider_key, tool_name
       ORDER BY call_count DESC
       LIMIT 10`
     ).all() as Record<string, unknown>[];
 
     const toolStats: DashboardToolStats[] = toolRows.map((r) => ({
+      providerKey: (r.provider_key as string) ?? "",
       toolName: r.tool_name as string,
       callCount: r.call_count as number,
       totalCost: (r.total_cost as number) ?? 0,
@@ -742,7 +778,7 @@ export class SqliteStorage implements IStorage {
 
     // Recent 5 errors
     const errorRows = this.db.prepare(
-      `SELECT r.tool_name, r.error_message, u.username, r.created_at
+      `SELECT r.provider_key, r.tool_name, r.error_message, u.username, r.created_at
       FROM request_logs r
       LEFT JOIN users u ON r.user_id = u.id
       WHERE r.response_status = 'error'
@@ -751,6 +787,7 @@ export class SqliteStorage implements IStorage {
     ).all() as Record<string, unknown>[];
 
     const recentErrors: DashboardRecentError[] = errorRows.map((r) => ({
+      providerKey: (r.provider_key as string) ?? null,
       toolName: (r.tool_name as string) ?? null,
       errorMessage: (r.error_message as string) ?? null,
       username: (r.username as string) ?? null,
