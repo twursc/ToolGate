@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { getUser, listApiKeys, createApiKey, updateApiKey, deleteApiKey, getUserUsage, regenerateApiKey, listConnectionLogs } from "@/lib/api";
-import type { User, ApiKey, ConnectionLog } from "@/lib/types";
+import type { User, ApiKey, ConnectionLog, UserGroup } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +48,9 @@ export default function UserDetail() {
   const [regenerate, setRegenerate] = useState(false);
   const [regeneratedKey, setRegeneratedKey] = useState("");
 
+  // User groups
+  const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
+
   // Connection logs state
   const [connections, setConnections] = useState<ConnectionLog[]>([]);
   const [connTotal, setConnTotal] = useState(0);
@@ -55,7 +58,10 @@ export default function UserDetail() {
 
   const loadUser = () => {
     if (!id) return;
-    getUser(id).then((r) => setUser(r.data));
+    getUser(id).then((r) => {
+      setUser(r.data);
+      setUserGroups(r.data.groups || []);
+    });
     listApiKeys(id).then((r) => setKeys(r.data));
   };
 
@@ -179,6 +185,27 @@ export default function UserDetail() {
           <div><span className="text-muted-foreground">{t("userDetail.noteLabel")}</span> {user.note || "-"}</div>
           <div><span className="text-muted-foreground">{t("userDetail.createdLabel")}</span> {new Date(user.createdAt).toLocaleString()}</div>
           <div><span className="text-muted-foreground">{t("userDetail.updatedLabel")}</span> {new Date(user.updatedAt).toLocaleString()}</div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>{t("userDetail.groups")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {userGroups.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {userGroups.map((g) => (
+                <Link key={g.id} to={`/admin/groups/${g.id}`}>
+                  <Badge variant={g.status === "active" ? "default" : "secondary"} className="cursor-pointer hover:opacity-80">
+                    {g.name}
+                  </Badge>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("userDetail.noGroups")}</p>
+          )}
         </CardContent>
       </Card>
 

@@ -11,6 +11,8 @@ import ProviderDetail from "@/pages/ProviderDetail";
 import StatsPage from "@/pages/Stats";
 import PricingPage from "@/pages/Pricing";
 import PlaygroundPage from "@/pages/Playground";
+import GroupsPage from "@/pages/Groups";
+import GroupDetailPage from "@/pages/GroupDetail";
 
 export default function App() {
   return (
@@ -22,6 +24,8 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="users/:id" element={<UserDetail />} />
+            <Route path="groups" element={<GroupsPage />} />
+            <Route path="groups/:id" element={<GroupDetailPage />} />
             <Route path="providers" element={<ProvidersPage />} />
             <Route path="providers/:key" element={<ProviderDetail />} />
             <Route path="stats" element={<StatsPage />} />

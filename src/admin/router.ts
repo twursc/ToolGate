@@ -12,6 +12,7 @@ import { createProvidersRouter } from "./providers.js";
 import { createStatsRouter } from "./stats.js";
 import { createPlaygroundRouter } from "./playground.js";
 import { createConnectionLogsRouter } from "./connection-logs.js";
+import { createGroupsRouter } from "./groups.js";
 
 export function createAdminRouter(storage: IStorage): Router {
   const router = Router();
@@ -69,6 +70,16 @@ export function createAdminRouter(storage: IStorage): Router {
   // Connection logs routes
   const connectionLogsRouter = createConnectionLogsRouter(storage);
   router.get("/users/:id/connection-logs", authMiddleware, connectionLogsRouter.listByUser);
+
+  // Groups routes
+  const groupsRouter = createGroupsRouter(storage);
+  router.post("/groups", authMiddleware, groupsRouter.create);
+  router.get("/groups", authMiddleware, groupsRouter.list);
+  router.get("/groups/:id", authMiddleware, groupsRouter.getById);
+  router.put("/groups/:id", authMiddleware, groupsRouter.update);
+  router.delete("/groups/:id", authMiddleware, groupsRouter.delete);
+  router.post("/groups/:id/members", authMiddleware, groupsRouter.addMembers);
+  router.delete("/groups/:id/members/:userId", authMiddleware, groupsRouter.removeMember);
 
   // Playground routes
   const playgroundRouter = createPlaygroundRouter(storage);

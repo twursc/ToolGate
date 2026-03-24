@@ -439,10 +439,21 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
         }
       }
 
-      // Check allowedTools
-      const allowedTools = authContext.apiKeyRecord.allowedTools;
-      if (allowedTools && allowedTools.length > 0 && !allowedTools.includes(name)) {
-        logger.warn(`Tool ${name} not in allowedTools for API key ${apiKeyId}`);
+      // Check allowedTools: group-level + API key-level
+      const groupTools = authContext.groupAllowedTools;
+      const keyTools = authContext.apiKeyRecord.allowedTools;
+      let effectiveAllowed: string[] | null = null;
+      if (groupTools !== null && keyTools !== null && keyTools.length > 0) {
+        // Both set: intersection
+        const groupSet = new Set(groupTools);
+        effectiveAllowed = keyTools.filter((t) => groupSet.has(t));
+      } else if (groupTools !== null) {
+        effectiveAllowed = groupTools;
+      } else if (keyTools !== null && keyTools.length > 0) {
+        effectiveAllowed = keyTools;
+      }
+      if (effectiveAllowed !== null && !effectiveAllowed.includes(name)) {
+        logger.warn(`Tool ${name} not allowed for user ${userId} / API key ${apiKeyId}`);
         throw new Error(`Tool not allowed: ${name}`);
       }
 

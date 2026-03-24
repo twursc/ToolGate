@@ -70,6 +70,24 @@ export interface ConnectionLog {
   disconnectedAt: Date | null;
 }
 
+export interface UserGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  allowedTools: string[] | null; // null = all tools allowed
+  status: "active" | "disabled";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GroupMember {
+  userId: string;
+  username: string;
+  email: string | null;
+  status: "active" | "disabled";
+  joinedAt: Date;
+}
+
 // --- Input Types ---
 
 export interface CreateUserInput {
@@ -97,6 +115,12 @@ export interface CreateConnectionLogInput {
   transportType: "sse" | "http";
   userAgent?: string | null;
   ipAddress?: string | null;
+}
+
+export interface CreateUserGroupInput {
+  name: string;
+  description?: string | null;
+  allowedTools?: string[] | null;
 }
 
 export interface ConnectionLogFilter {
@@ -205,6 +229,19 @@ export interface IStorage {
   getToolPrice(toolName: string): Promise<number>;
   listToolPrices(): Promise<ToolPrice[]>;
   batchUpdateToolPrices(prices: { toolName: string; unitPrice: number }[]): Promise<void>;
+
+  // User groups
+  createUserGroup(input: CreateUserGroupInput): Promise<UserGroup>;
+  getUserGroup(id: string): Promise<UserGroup | null>;
+  listUserGroups(opts?: ListOptions): Promise<UserGroup[]>;
+  updateUserGroup(id: string, data: Partial<Pick<UserGroup, "name" | "description" | "allowedTools" | "status">>): Promise<UserGroup>;
+  deleteUserGroup(id: string): Promise<void>;
+  addGroupMembers(groupId: string, userIds: string[]): Promise<void>;
+  removeGroupMember(groupId: string, userId: string): Promise<void>;
+  listGroupMembers(groupId: string): Promise<GroupMember[]>;
+  listUserGroupsByUser(userId: string): Promise<UserGroup[]>;
+  getUserEffectiveAllowedTools(userId: string): Promise<string[] | null>;
+  getGroupMemberCount(groupId: string): Promise<number>;
 
   // Connection logs
   insertConnectionLog(log: CreateConnectionLogInput): Promise<ConnectionLog>;

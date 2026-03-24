@@ -11,6 +11,7 @@ import {
   LogOut,
   LayoutDashboard,
   FlaskConical,
+  Shield,
 } from "lucide-react";
 
 export default function AdminLayout() {
@@ -21,6 +22,7 @@ export default function AdminLayout() {
   const navItems = [
     { to: "/admin/", label: t("nav.dashboard"), icon: LayoutDashboard },
     { to: "/admin/users", label: t("nav.users"), icon: Users },
+    { to: "/admin/groups", label: t("nav.groups"), icon: Shield },
     { to: "/admin/providers", label: t("nav.providers"), icon: Server },
     { to: "/admin/stats", label: t("nav.stats"), icon: BarChart3 },
     { to: "/admin/pricing", label: t("nav.pricing"), icon: DollarSign },

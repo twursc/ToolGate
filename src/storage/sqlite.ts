@@ -9,8 +9,11 @@ import type {
   UsageRecord,
   ToolPrice,
   ConnectionLog,
+  UserGroup,
+  GroupMember,
   CreateUserInput,
   CreateApiKeyInput,
+  CreateUserGroupInput,
   CreateConnectionLogInput,
   ConnectionLogFilter,
   ListOptions,
@@ -90,6 +93,28 @@ export class SqliteStorage implements IStorage {
         unit_price REAL NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        allowed_tools TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS user_group_members (
+        group_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (group_id, user_id),
+        FOREIGN KEY (group_id) REFERENCES user_groups(id),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ugm_user ON user_group_members(user_id);
     `);
 
     this.db.exec(`
@@ -459,6 +484,126 @@ export class SqliteStorage implements IStorage {
       }
     });
     transaction(prices);
+  }
+
+  // --- User Groups ---
+
+  private toUserGroup(row: Record<string, unknown>): UserGroup {
+    const allowedToolsRaw = row.allowed_tools as string | null;
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      description: (row.description as string) ?? null,
+      allowedTools: allowedToolsRaw ? JSON.parse(allowedToolsRaw) : null,
+      status: row.status as "active" | "disabled",
+      createdAt: new Date(row.created_at as string),
+      updatedAt: new Date(row.updated_at as string),
+    };
+  }
+
+  async createUserGroup(input: CreateUserGroupInput): Promise<UserGroup> {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    const allowedTools = input.allowedTools ? JSON.stringify(input.allowedTools) : null;
+    this.db.prepare(
+      `INSERT INTO user_groups (id, name, description, allowed_tools, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'active', ?, ?)`
+    ).run(id, input.name, input.description ?? null, allowedTools, now, now);
+    return (await this.getUserGroup(id))!;
+  }
+
+  async getUserGroup(id: string): Promise<UserGroup | null> {
+    const row = this.db.prepare("SELECT * FROM user_groups WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return row ? this.toUserGroup(row) : null;
+  }
+
+  async listUserGroups(opts?: ListOptions): Promise<UserGroup[]> {
+    const limit = opts?.limit ?? 100;
+    const offset = opts?.offset ?? 0;
+    const rows = this.db.prepare("SELECT * FROM user_groups ORDER BY created_at DESC LIMIT ? OFFSET ?").all(limit, offset) as Record<string, unknown>[];
+    return rows.map((r) => this.toUserGroup(r));
+  }
+
+  async updateUserGroup(id: string, data: Partial<Pick<UserGroup, "name" | "description" | "allowedTools" | "status">>): Promise<UserGroup> {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    if (data.name !== undefined) { sets.push("name = ?"); values.push(data.name); }
+    if (data.description !== undefined) { sets.push("description = ?"); values.push(data.description); }
+    if (data.allowedTools !== undefined) { sets.push("allowed_tools = ?"); values.push(data.allowedTools ? JSON.stringify(data.allowedTools) : null); }
+    if (data.status !== undefined) { sets.push("status = ?"); values.push(data.status); }
+    sets.push("updated_at = ?");
+    values.push(new Date().toISOString());
+    values.push(id);
+    this.db.prepare(`UPDATE user_groups SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+    return (await this.getUserGroup(id))!;
+  }
+
+  async deleteUserGroup(id: string): Promise<void> {
+    this.db.prepare("DELETE FROM user_group_members WHERE group_id = ?").run(id);
+    this.db.prepare("DELETE FROM user_groups WHERE id = ?").run(id);
+  }
+
+  async addGroupMembers(groupId: string, userIds: string[]): Promise<void> {
+    const now = new Date().toISOString();
+    const stmt = this.db.prepare(
+      "INSERT OR IGNORE INTO user_group_members (group_id, user_id, created_at) VALUES (?, ?, ?)"
+    );
+    const transaction = this.db.transaction((ids: string[]) => {
+      for (const uid of ids) {
+        stmt.run(groupId, uid, now);
+      }
+    });
+    transaction(userIds);
+  }
+
+  async removeGroupMember(groupId: string, userId: string): Promise<void> {
+    this.db.prepare("DELETE FROM user_group_members WHERE group_id = ? AND user_id = ?").run(groupId, userId);
+  }
+
+  async listGroupMembers(groupId: string): Promise<GroupMember[]> {
+    const rows = this.db.prepare(
+      `SELECT u.id as user_id, u.username, u.email, u.status, m.created_at as joined_at
+       FROM user_group_members m JOIN users u ON m.user_id = u.id
+       WHERE m.group_id = ? ORDER BY m.created_at DESC`
+    ).all(groupId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      userId: r.user_id as string,
+      username: r.username as string,
+      email: (r.email as string) ?? null,
+      status: r.status as "active" | "disabled",
+      joinedAt: new Date(r.joined_at as string),
+    }));
+  }
+
+  async listUserGroupsByUser(userId: string): Promise<UserGroup[]> {
+    const rows = this.db.prepare(
+      `SELECT g.* FROM user_groups g
+       JOIN user_group_members m ON g.id = m.group_id
+       WHERE m.user_id = ? ORDER BY g.name`
+    ).all(userId) as Record<string, unknown>[];
+    return rows.map((r) => this.toUserGroup(r));
+  }
+
+  async getUserEffectiveAllowedTools(userId: string): Promise<string[] | null> {
+    const groups = await this.listUserGroupsByUser(userId);
+    const activeGroups = groups.filter((g) => g.status === "active");
+    if (activeGroups.length === 0) return null; // no groups -> no group-level restriction
+    let hasNullGroup = false;
+    const toolSet = new Set<string>();
+    for (const g of activeGroups) {
+      if (g.allowedTools === null) {
+        hasNullGroup = true;
+      } else {
+        for (const t of g.allowedTools) toolSet.add(t);
+      }
+    }
+    if (hasNullGroup) return null; // at least one group allows all
+    return Array.from(toolSet);
+  }
+
+  async getGroupMemberCount(groupId: string): Promise<number> {
+    const row = this.db.prepare("SELECT COUNT(*) as cnt FROM user_group_members WHERE group_id = ?").get(groupId) as Record<string, unknown>;
+    return (row.cnt as number) ?? 0;
   }
 
   // --- Connection Logs ---

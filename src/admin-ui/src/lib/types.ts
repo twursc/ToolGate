@@ -101,6 +101,29 @@ export interface ConnectionLog {
   apiKeyPrefix: string | null;
 }
 
+export interface UserGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  allowedTools: string[] | null;
+  status: "active" | "disabled";
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupMember {
+  userId: string;
+  username: string;
+  email: string | null;
+  status: "active" | "disabled";
+  joinedAt: string;
+}
+
+export interface GroupDetail extends UserGroup {
+  members: GroupMember[];
+}
+
 export interface ToolSchema {
   name: string;
   description?: string;

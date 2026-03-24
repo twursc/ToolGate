@@ -9,6 +9,7 @@ export interface AuthContext {
   apiKey: string;
   user: User;
   apiKeyRecord: ApiKey;
+  groupAllowedTools: string[] | null; // null = no group-level restriction
 }
 
 declare global {
@@ -45,6 +46,7 @@ const ANONYMOUS_AUTH_CONTEXT: AuthContext = {
     expiresAt: null,
     createdAt: new Date(),
   },
+  groupAllowedTools: null,
 };
 
 export function createAuthMiddleware(storage: IStorage) {
@@ -109,6 +111,9 @@ export function createAuthMiddleware(storage: IStorage) {
       return;
     }
 
+    // Resolve group-level allowed tools
+    const groupAllowedTools = await storage.getUserEffectiveAllowedTools(user.id);
+
     // Attach auth context to request
     req.authContext = {
       userId: user.id,
@@ -116,6 +121,7 @@ export function createAuthMiddleware(storage: IStorage) {
       apiKey: rawApiKey,
       user,
       apiKeyRecord,
+      groupAllowedTools,
     };
 
     logger.debug(`Authenticated user: ${user.username} with API key: ${apiKeyRecord.name}`);

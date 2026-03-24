@@ -104,6 +104,27 @@ export const setToolPrice = (toolName: string, unitPrice: number) =>
 export const batchUpdateToolPrices = (prices: { toolName: string; unitPrice: number }[]) =>
   api.put("/tool-prices", { prices });
 
+// Groups
+export const listGroups = (limit = 50, offset = 0) =>
+  api.get("/groups", { params: { limit, offset } });
+
+export const getGroup = (id: string) => api.get(`/groups/${id}`);
+
+export const createGroup = (data: { name: string; description?: string; allowedTools?: string[] | null }) =>
+  api.post("/groups", data);
+
+export const updateGroup = (id: string, data: Record<string, unknown>) =>
+  api.put(`/groups/${id}`, data);
+
+export const deleteGroup = (id: string) =>
+  api.delete(`/groups/${id}`);
+
+export const addGroupMembers = (groupId: string, userIds: string[]) =>
+  api.post(`/groups/${groupId}/members`, { userIds });
+
+export const removeGroupMember = (groupId: string, userId: string) =>
+  api.delete(`/groups/${groupId}/members/${userId}`);
+
 // Playground
 export const playgroundListTools = () => api.get("/playground/tools");
 

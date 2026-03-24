@@ -50,7 +50,8 @@ export function createUsersRouter(storage: IStorage) {
           res.status(404).json({ error: "User not found" });
           return;
         }
-        res.json(user);
+        const groups = await storage.listUserGroupsByUser(user.id);
+        res.json({ ...user, groups });
       } catch (e: any) {
         logger.error(`Failed to get user: ${e.message}`);
         res.status(500).json({ error: e.message });
