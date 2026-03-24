@@ -8,8 +8,11 @@ import type {
   RequestLogWithUser,
   UsageRecord,
   ToolPrice,
+  ConnectionLog,
   CreateUserInput,
   CreateApiKeyInput,
+  CreateConnectionLogInput,
+  ConnectionLogFilter,
   ListOptions,
   LogFilter,
   UsageFilter,
@@ -104,6 +107,25 @@ export class PostgresStorage implements IStorage {
         ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS cost DECIMAL(10,4) DEFAULT 0;
         ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS profile_key VARCHAR(255) DEFAULT NULL;
       END $$;
+    `);
+
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS connection_logs (
+        id UUID PRIMARY KEY,
+        user_id UUID NOT NULL,
+        api_key_id UUID NOT NULL,
+        session_id VARCHAR(255) NOT NULL,
+        transport_type VARCHAR(10) NOT NULL,
+        client_name VARCHAR(255),
+        client_version VARCHAR(255),
+        user_agent TEXT,
+        ip_address VARCHAR(45),
+        status VARCHAR(10) NOT NULL DEFAULT 'online',
+        connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        disconnected_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_conn_logs_user ON connection_logs(user_id, status);
+      CREATE INDEX IF NOT EXISTS idx_conn_logs_session ON connection_logs(session_id);
     `);
   }
 
@@ -431,6 +453,75 @@ export class PostgresStorage implements IStorage {
     } finally {
       client.release();
     }
+  }
+
+  // --- Connection Logs ---
+
+  private toConnectionLog(row: Record<string, unknown>): ConnectionLog {
+    return {
+      id: row.id as string,
+      userId: row.user_id as string,
+      apiKeyId: row.api_key_id as string,
+      sessionId: row.session_id as string,
+      transportType: row.transport_type as "sse" | "http",
+      clientName: (row.client_name as string) ?? null,
+      clientVersion: (row.client_version as string) ?? null,
+      userAgent: (row.user_agent as string) ?? null,
+      ipAddress: (row.ip_address as string) ?? null,
+      status: row.status as "online" | "offline",
+      connectedAt: new Date(row.connected_at as string),
+      disconnectedAt: row.disconnected_at ? new Date(row.disconnected_at as string) : null,
+    };
+  }
+
+  async insertConnectionLog(log: CreateConnectionLogInput): Promise<ConnectionLog> {
+    const id = uuidv4();
+    const { rows } = await this.pool.query(
+      `INSERT INTO connection_logs (id, user_id, api_key_id, session_id, transport_type, user_agent, ip_address, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'online') RETURNING *`,
+      [id, log.userId, log.apiKeyId, log.sessionId, log.transportType, log.userAgent ?? null, log.ipAddress ?? null]
+    );
+    return this.toConnectionLog(rows[0]);
+  }
+
+  async updateConnectionLogDisconnect(sessionId: string): Promise<void> {
+    await this.pool.query(
+      "UPDATE connection_logs SET status = 'offline', disconnected_at = NOW() WHERE session_id = $1 AND status = 'online'",
+      [sessionId]
+    );
+  }
+
+  async updateConnectionLogClientInfo(sessionId: string, clientName: string, clientVersion: string): Promise<void> {
+    await this.pool.query(
+      "UPDATE connection_logs SET client_name = $1, client_version = $2 WHERE session_id = $3",
+      [clientName, clientVersion, sessionId]
+    );
+  }
+
+  async listConnectionLogs(filter: ConnectionLogFilter): Promise<PaginatedResult<ConnectionLog>> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+    if (filter.userId) { conditions.push(`c.user_id = $${idx++}`); values.push(filter.userId); }
+    if (filter.status) { conditions.push(`c.status = $${idx++}`); values.push(filter.status); }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const countResult = await this.pool.query(`SELECT COUNT(*)::int as cnt FROM connection_logs c ${where}`, values);
+    const total = countResult.rows[0]?.cnt ?? 0;
+    const limit = filter.limit ?? 100;
+    const offset = filter.offset ?? 0;
+    const dataValues = [...values, limit, offset];
+    const { rows } = await this.pool.query(
+      `SELECT c.* FROM connection_logs c ${where} ORDER BY c.connected_at DESC LIMIT $${idx++} OFFSET $${idx}`,
+      dataValues
+    );
+    return { data: rows.map((r: Record<string, unknown>) => this.toConnectionLog(r)), total };
+  }
+
+  async cleanStaleConnectionLogs(): Promise<number> {
+    const result = await this.pool.query(
+      "UPDATE connection_logs SET status = 'offline', disconnected_at = NOW() WHERE status = 'online'"
+    );
+    return result.rowCount ?? 0;
   }
 
   // --- Lifecycle ---

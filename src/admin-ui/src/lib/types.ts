@@ -84,6 +84,23 @@ export interface McpProvider {
   profiles: McpProfile[];
 }
 
+export interface ConnectionLog {
+  id: string;
+  userId: string;
+  apiKeyId: string;
+  sessionId: string;
+  transportType: "sse" | "http";
+  clientName: string | null;
+  clientVersion: string | null;
+  userAgent: string | null;
+  ipAddress: string | null;
+  status: "online" | "offline";
+  connectedAt: string;
+  disconnectedAt: string | null;
+  apiKeyName: string | null;
+  apiKeyPrefix: string | null;
+}
+
 export interface ToolSchema {
   name: string;
   description?: string;

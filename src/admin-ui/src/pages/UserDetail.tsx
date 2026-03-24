@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router-dom";
-import { getUser, listApiKeys, createApiKey, updateApiKey, deleteApiKey, getUserUsage, regenerateApiKey } from "@/lib/api";
-import type { User, ApiKey } from "@/lib/types";
+import { getUser, listApiKeys, createApiKey, updateApiKey, deleteApiKey, getUserUsage, regenerateApiKey, listConnectionLogs } from "@/lib/api";
+import type { User, ApiKey, ConnectionLog } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Copy, Trash2, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Copy, Trash2, Pencil, Wifi, WifiOff } from "lucide-react";
 
 export default function UserDetail() {
   const { t } = useTranslation();
@@ -48,6 +48,11 @@ export default function UserDetail() {
   const [regenerate, setRegenerate] = useState(false);
   const [regeneratedKey, setRegeneratedKey] = useState("");
 
+  // Connection logs state
+  const [connections, setConnections] = useState<ConnectionLog[]>([]);
+  const [connTotal, setConnTotal] = useState(0);
+  const [connOnlineOnly, setConnOnlineOnly] = useState(true);
+
   const loadUser = () => {
     if (!id) return;
     getUser(id).then((r) => setUser(r.data));
@@ -59,7 +64,23 @@ export default function UserDetail() {
     getUserUsage(id, { billingMonth: month ?? usageMonth }).then((r) => setUsage(r.data));
   };
 
-  useEffect(() => { loadUser(); loadUsage(); }, [id]);
+  const loadConnections = (onlineOnly?: boolean) => {
+    if (!id) return;
+    const status = (onlineOnly ?? connOnlineOnly) ? "online" : "all";
+    listConnectionLogs(id, { status, limit: "100" }).then((r) => {
+      setConnections(r.data.data);
+      setConnTotal(r.data.total);
+    });
+  };
+
+  useEffect(() => { loadUser(); loadUsage(); loadConnections(); }, [id]);
+
+  // Auto-refresh connections every 30s when viewing online only
+  useEffect(() => {
+    if (!connOnlineOnly) return;
+    const interval = setInterval(() => loadConnections(true), 30000);
+    return () => clearInterval(interval);
+  }, [id, connOnlineOnly]);
 
   const handleCreateKey = async () => {
     if (!id) return;
@@ -207,6 +228,80 @@ export default function UserDetail() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">{t("userDetail.noUsage")}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>{t("userDetail.connections")} ({connTotal})</CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const next = !connOnlineOnly;
+                setConnOnlineOnly(next);
+                loadConnections(next);
+              }}
+            >
+              {connOnlineOnly ? <Wifi className="h-4 w-4 mr-2" /> : <WifiOff className="h-4 w-4 mr-2" />}
+              {connOnlineOnly ? t("userDetail.connectionsShowAll") : t("userDetail.connectionsOnlineOnly")}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {connections.length > 0 ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("userDetail.connStatus")}</TableHead>
+                    <TableHead>{t("userDetail.connApiKey")}</TableHead>
+                    <TableHead>{t("userDetail.connClient")}</TableHead>
+                    <TableHead>{t("userDetail.connIpAddress")}</TableHead>
+                    <TableHead>{t("userDetail.connTransport")}</TableHead>
+                    <TableHead>{t("userDetail.connConnectedAt")}</TableHead>
+                    <TableHead>{t("userDetail.connDisconnectedAt")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {connections.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell>
+                        <span className="flex items-center gap-2">
+                          <span className={`inline-block h-2 w-2 rounded-full ${c.status === "online" ? "bg-green-500" : "bg-gray-400"}`} />
+                          {c.status === "online" ? t("userDetail.connOnline") : t("userDetail.connOffline")}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium">{c.apiKeyName ?? "-"}</span>
+                        {c.apiKeyPrefix && <code className="ml-1 text-xs text-muted-foreground">{c.apiKeyPrefix}...</code>}
+                      </TableCell>
+                      <TableCell>
+                        <span title={c.userAgent ?? undefined}>
+                          {c.clientName
+                            ? `${c.clientName}${c.clientVersion ? ` v${c.clientVersion}` : ""}`
+                            : t("userDetail.connUnknownClient")}
+                        </span>
+                      </TableCell>
+                      <TableCell><code className="text-xs">{c.ipAddress ?? "-"}</code></TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{c.transportType.toUpperCase()}</Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {new Date(c.connectedAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {c.disconnectedAt ? new Date(c.disconnectedAt).toLocaleString() : "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("userDetail.connNoData")}</p>
           )}
         </CardContent>
       </Card>

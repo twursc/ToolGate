@@ -16,6 +16,25 @@ import { createAdminRouter } from "./admin/router.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+function getClientIp(req: express.Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
+  return req.socket.remoteAddress ?? "";
+}
+
+function extractClientInfo(body: unknown): { name: string; version: string } | null {
+  if (typeof body === "object" && body !== null && "params" in body) {
+    const params = (body as Record<string, unknown>).params;
+    if (typeof params === "object" && params !== null && "clientInfo" in params) {
+      const ci = (params as Record<string, unknown>).clientInfo;
+      if (typeof ci === "object" && ci !== null && "name" in ci) {
+        return { name: String((ci as Record<string, unknown>).name), version: String((ci as Record<string, unknown>).version ?? "") };
+      }
+    }
+  }
+  return null;
+}
+
 // Map to store transports by session ID for SSE
 const sseTransports: Map<string, SSEServerTransport> = new Map();
 // Map to store transports by session ID for Streamable HTTP
@@ -34,6 +53,12 @@ async function main() {
   const storage = await createStorage(config);
   await storage.initialize();
   logger.info(`Storage initialized: ${config.storage.type}`);
+
+  // Clean stale online connection logs from previous server run
+  const staleCount = await storage.cleanStaleConnectionLogs();
+  if (staleCount > 0) {
+    logger.info(`Cleaned ${staleCount} stale connection logs from previous run`);
+  }
 
   // Create MCP Server with proxy handlers
   const server = await setupMcpProxy({
@@ -87,9 +112,19 @@ async function main() {
     // Store auth context for this session so CallTool handler can access it
     if (req.authContext) {
       setSessionAuth(transport.sessionId, req.authContext);
+      storage.insertConnectionLog({
+        userId: req.authContext.userId,
+        apiKeyId: req.authContext.apiKeyId,
+        sessionId: transport.sessionId,
+        transportType: "sse",
+        userAgent: req.headers["user-agent"] ?? null,
+        ipAddress: getClientIp(req),
+      }).catch((e) => logger.error(`Failed to insert connection log: ${e.message}`));
     }
 
     res.on("close", () => {
+      storage.updateConnectionLogDisconnect(transport.sessionId)
+        .catch((e) => logger.error(`Failed to update connection log disconnect: ${e.message}`));
       clearSessionAuth(transport.sessionId);
       sseTransports.delete(transport.sessionId);
     });
@@ -105,6 +140,14 @@ async function main() {
     if (!transport) {
       res.status(400).json({ error: "Session not found" });
       return;
+    }
+    // Capture clientInfo from initialize request
+    if (isInitializeRequest(req.body)) {
+      const ci = extractClientInfo(req.body);
+      if (ci) {
+        storage.updateConnectionLogClientInfo(sessionId, ci.name, ci.version)
+          .catch((e) => logger.error(`Failed to update clientInfo: ${e.message}`));
+      }
     }
     await transport.handlePostMessage(req, res);
   });
@@ -131,6 +174,9 @@ async function main() {
     }
 
     const authContext = req.authContext;
+    const httpUserAgent = req.headers["user-agent"] ?? null;
+    const httpIpAddress = getClientIp(req);
+    const ci = extractClientInfo(req.body);
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
@@ -139,6 +185,18 @@ async function main() {
         // Store auth context for this session
         if (authContext) {
           setSessionAuth(sid, authContext);
+          storage.insertConnectionLog({
+            userId: authContext.userId,
+            apiKeyId: authContext.apiKeyId,
+            sessionId: sid,
+            transportType: "http",
+            userAgent: httpUserAgent,
+            ipAddress: httpIpAddress,
+          }).then(() => {
+            if (ci) {
+              return storage.updateConnectionLogClientInfo(sid, ci.name, ci.version);
+            }
+          }).catch((e) => logger.error(`Failed to insert connection log: ${e.message}`));
         }
         logger.debug(`HTTP session initialized: ${sid}`);
       },
@@ -146,6 +204,8 @@ async function main() {
 
     transport.onclose = () => {
       if (transport.sessionId) {
+        storage.updateConnectionLogDisconnect(transport.sessionId)
+          .catch((e) => logger.error(`Failed to update connection log disconnect: ${e.message}`));
         clearSessionAuth(transport.sessionId);
         httpTransports.delete(transport.sessionId);
       }

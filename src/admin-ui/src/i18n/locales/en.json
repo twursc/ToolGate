@@ -223,5 +223,20 @@
   "playground.runTool": "Run Tool",
   "playground.response": "Response",
   "playground.selectPrompt": "Select a tool and click Run to see the response here.",
-  "playground.profile": "Profile:"
+  "playground.profile": "Profile:",
+
+  "userDetail.connections": "MCP Connections",
+  "userDetail.connectionsOnlineOnly": "Online Only",
+  "userDetail.connectionsShowAll": "Show All",
+  "userDetail.connStatus": "Status",
+  "userDetail.connApiKey": "API Key",
+  "userDetail.connClient": "Client",
+  "userDetail.connIpAddress": "IP Address",
+  "userDetail.connTransport": "Transport",
+  "userDetail.connConnectedAt": "Connected",
+  "userDetail.connDisconnectedAt": "Disconnected",
+  "userDetail.connOnline": "Online",
+  "userDetail.connOffline": "Offline",
+  "userDetail.connNoData": "No connections",
+  "userDetail.connUnknownClient": "Unknown"
 }

@@ -223,5 +223,20 @@
   "playground.runTool": "运行工具",
   "playground.response": "响应",
   "playground.selectPrompt": "选择一个工具并点击运行以查看响应。",
-  "playground.profile": "Profile："
+  "playground.profile": "Profile：",
+
+  "userDetail.connections": "MCP 连接",
+  "userDetail.connectionsOnlineOnly": "仅在线",
+  "userDetail.connectionsShowAll": "显示全部",
+  "userDetail.connStatus": "状态",
+  "userDetail.connApiKey": "API 密钥",
+  "userDetail.connClient": "客户端",
+  "userDetail.connIpAddress": "IP 地址",
+  "userDetail.connTransport": "传输协议",
+  "userDetail.connConnectedAt": "连接时间",
+  "userDetail.connDisconnectedAt": "断开时间",
+  "userDetail.connOnline": "在线",
+  "userDetail.connOffline": "离线",
+  "userDetail.connNoData": "暂无连接记录",
+  "userDetail.connUnknownClient": "未知"
 }

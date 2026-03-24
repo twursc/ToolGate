@@ -49,6 +49,10 @@ export const deleteApiKey = (id: string) =>
 export const regenerateApiKey = (id: string) =>
   api.post(`/api-keys/${id}/regenerate`);
 
+// Connection Logs
+export const listConnectionLogs = (userId: string, params?: Record<string, string>) =>
+  api.get(`/users/${userId}/connection-logs`, { params });
+
 // Providers
 export const listProviders = () => api.get("/providers");
 

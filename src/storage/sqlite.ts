@@ -8,8 +8,11 @@ import type {
   RequestLogWithUser,
   UsageRecord,
   ToolPrice,
+  ConnectionLog,
   CreateUserInput,
   CreateApiKeyInput,
+  CreateConnectionLogInput,
+  ConnectionLogFilter,
   ListOptions,
   LogFilter,
   UsageFilter,
@@ -87,6 +90,25 @@ export class SqliteStorage implements IStorage {
         unit_price REAL NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS connection_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        api_key_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        transport_type TEXT NOT NULL,
+        client_name TEXT,
+        client_version TEXT,
+        user_agent TEXT,
+        ip_address TEXT,
+        status TEXT NOT NULL DEFAULT 'online',
+        connected_at TEXT NOT NULL DEFAULT (datetime('now')),
+        disconnected_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_conn_logs_user ON connection_logs(user_id, status);
+      CREATE INDEX IF NOT EXISTS idx_conn_logs_session ON connection_logs(session_id);
     `);
 
     // Migrations: add new columns if they don't exist
@@ -437,6 +459,74 @@ export class SqliteStorage implements IStorage {
       }
     });
     transaction(prices);
+  }
+
+  // --- Connection Logs ---
+
+  private toConnectionLog(row: Record<string, unknown>): ConnectionLog {
+    return {
+      id: row.id as string,
+      userId: row.user_id as string,
+      apiKeyId: row.api_key_id as string,
+      sessionId: row.session_id as string,
+      transportType: row.transport_type as "sse" | "http",
+      clientName: (row.client_name as string) ?? null,
+      clientVersion: (row.client_version as string) ?? null,
+      userAgent: (row.user_agent as string) ?? null,
+      ipAddress: (row.ip_address as string) ?? null,
+      status: row.status as "online" | "offline",
+      connectedAt: new Date(row.connected_at as string),
+      disconnectedAt: row.disconnected_at ? new Date(row.disconnected_at as string) : null,
+    };
+  }
+
+  async insertConnectionLog(log: CreateConnectionLogInput): Promise<ConnectionLog> {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `INSERT INTO connection_logs (id, user_id, api_key_id, session_id, transport_type, user_agent, ip_address, status, connected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'online', ?)`
+    ).run(id, log.userId, log.apiKeyId, log.sessionId, log.transportType, log.userAgent ?? null, log.ipAddress ?? null, now);
+    return this.toConnectionLog(
+      this.db.prepare("SELECT * FROM connection_logs WHERE id = ?").get(id) as Record<string, unknown>
+    );
+  }
+
+  async updateConnectionLogDisconnect(sessionId: string): Promise<void> {
+    const now = new Date().toISOString();
+    this.db.prepare(
+      "UPDATE connection_logs SET status = 'offline', disconnected_at = ? WHERE session_id = ? AND status = 'online'"
+    ).run(now, sessionId);
+  }
+
+  async updateConnectionLogClientInfo(sessionId: string, clientName: string, clientVersion: string): Promise<void> {
+    this.db.prepare(
+      "UPDATE connection_logs SET client_name = ?, client_version = ? WHERE session_id = ?"
+    ).run(clientName, clientVersion, sessionId);
+  }
+
+  async listConnectionLogs(filter: ConnectionLogFilter): Promise<PaginatedResult<ConnectionLog>> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    if (filter.userId) { conditions.push("c.user_id = ?"); values.push(filter.userId); }
+    if (filter.status) { conditions.push("c.status = ?"); values.push(filter.status); }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const limit = filter.limit ?? 100;
+    const offset = filter.offset ?? 0;
+    const totalRow = this.db.prepare(`SELECT COUNT(*) as cnt FROM connection_logs c ${where}`).get(...values) as Record<string, unknown>;
+    const total = (totalRow?.cnt as number) ?? 0;
+    const rows = this.db.prepare(
+      `SELECT c.* FROM connection_logs c ${where} ORDER BY c.connected_at DESC LIMIT ? OFFSET ?`
+    ).all(...values, limit, offset) as Record<string, unknown>[];
+    return { data: rows.map((r) => this.toConnectionLog(r)), total };
+  }
+
+  async cleanStaleConnectionLogs(): Promise<number> {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(
+      "UPDATE connection_logs SET status = 'offline', disconnected_at = ? WHERE status = 'online'"
+    ).run(now);
+    return result.changes;
   }
 
   // --- Lifecycle ---

@@ -11,6 +11,7 @@ import { createApiKeysRouter } from "./api-keys.js";
 import { createProvidersRouter } from "./providers.js";
 import { createStatsRouter } from "./stats.js";
 import { createPlaygroundRouter } from "./playground.js";
+import { createConnectionLogsRouter } from "./connection-logs.js";
 
 export function createAdminRouter(storage: IStorage): Router {
   const router = Router();
@@ -64,6 +65,10 @@ export function createAdminRouter(storage: IStorage): Router {
   router.get("/tool-prices", authMiddleware, statsRouter.listToolPrices);
   router.put("/tool-prices/:toolName", authMiddleware, statsRouter.setToolPrice);
   router.put("/tool-prices", authMiddleware, statsRouter.batchUpdateToolPrices);
+
+  // Connection logs routes
+  const connectionLogsRouter = createConnectionLogsRouter(storage);
+  router.get("/users/:id/connection-logs", authMiddleware, connectionLogsRouter.listByUser);
 
   // Playground routes
   const playgroundRouter = createPlaygroundRouter(storage);

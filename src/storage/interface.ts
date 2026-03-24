@@ -55,6 +55,21 @@ export interface ToolPrice {
   updatedAt: Date;
 }
 
+export interface ConnectionLog {
+  id: string;
+  userId: string;
+  apiKeyId: string;
+  sessionId: string;
+  transportType: "sse" | "http";
+  clientName: string | null;
+  clientVersion: string | null;
+  userAgent: string | null;
+  ipAddress: string | null;
+  status: "online" | "offline";
+  connectedAt: Date;
+  disconnectedAt: Date | null;
+}
+
 // --- Input Types ---
 
 export interface CreateUserInput {
@@ -73,6 +88,22 @@ export interface CreateApiKeyInput {
   balance?: number;
   status?: "active" | "disabled";
   expiresAt?: Date | null;
+}
+
+export interface CreateConnectionLogInput {
+  userId: string;
+  apiKeyId: string;
+  sessionId: string;
+  transportType: "sse" | "http";
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}
+
+export interface ConnectionLogFilter {
+  userId?: string;
+  status?: "online" | "offline";
+  limit?: number;
+  offset?: number;
 }
 
 // --- Filter Types ---
@@ -174,6 +205,13 @@ export interface IStorage {
   getToolPrice(toolName: string): Promise<number>;
   listToolPrices(): Promise<ToolPrice[]>;
   batchUpdateToolPrices(prices: { toolName: string; unitPrice: number }[]): Promise<void>;
+
+  // Connection logs
+  insertConnectionLog(log: CreateConnectionLogInput): Promise<ConnectionLog>;
+  updateConnectionLogDisconnect(sessionId: string): Promise<void>;
+  updateConnectionLogClientInfo(sessionId: string, clientName: string, clientVersion: string): Promise<void>;
+  listConnectionLogs(filter: ConnectionLogFilter): Promise<PaginatedResult<ConnectionLog>>;
+  cleanStaleConnectionLogs(): Promise<number>;
 
   // Lifecycle
   initialize(): Promise<void>;
