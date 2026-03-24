@@ -6,7 +6,7 @@ import { logger } from "../logger.js";
 
 function generateApiKey(): { key: string; hash: string; prefix: string } {
   const rawKey = uuidv4() + uuidv4().replace(/-/g, "");
-  const key = `sk_${rawKey.substring(0, 32)}`;
+  const key = `gwk4_${rawKey.substring(0, 32).replaceAll('-','')}`;
   const hash = createHash("sha256").update(key).digest("hex");
   const prefix = key.substring(0, 8);
   return { key, hash, prefix };
