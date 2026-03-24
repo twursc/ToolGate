@@ -3,6 +3,11 @@
   "common.save": "Save",
   "common.create": "Create",
   "common.add": "Add",
+
+  "toolSelector.allowAll": "Allow all tools (no restriction)",
+  "toolSelector.searchPlaceholder": "Search tools...",
+  "toolSelector.noTools": "No tools available",
+  "toolSelector.selectedCount": "{{count}} tool(s) selected",
   "common.active": "active",
   "common.inactive": "inactive",
   "common.disabled": "disabled",

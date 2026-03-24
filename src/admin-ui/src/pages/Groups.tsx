@@ -14,7 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import ToolSelector from "@/components/ToolSelector";
 import { toast } from "sonner";
 import { Plus, Pencil } from "lucide-react";
 
@@ -22,14 +22,14 @@ export default function GroupsPage() {
   const { t } = useTranslation();
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", allowedTools: "" });
+  const [form, setForm] = useState({ name: "", description: "", allowedTools: null as string[] | null });
 
   const [editOpen, setEditOpen] = useState(false);
   const [editGroup, setEditGroup] = useState<UserGroup | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
-    allowedTools: "",
+    allowedTools: null as string[] | null,
     status: "active" as "active" | "disabled",
   });
 
@@ -39,17 +39,14 @@ export default function GroupsPage() {
 
   const handleCreate = async () => {
     try {
-      const allowedTools = form.allowedTools.trim()
-        ? form.allowedTools.split(",").map((s) => s.trim()).filter(Boolean)
-        : null;
       await createGroup({
         name: form.name,
         description: form.description || undefined,
-        allowedTools,
+        allowedTools: form.allowedTools,
       });
       toast.success(t("groups.toast.created"));
       setCreateOpen(false);
-      setForm({ name: "", description: "", allowedTools: "" });
+      setForm({ name: "", description: "", allowedTools: null });
       load();
     } catch (e: unknown) {
       const err = e as { response?: { status?: number } };
@@ -66,7 +63,7 @@ export default function GroupsPage() {
     setEditForm({
       name: group.name,
       description: group.description || "",
-      allowedTools: group.allowedTools ? group.allowedTools.join(", ") : "",
+      allowedTools: group.allowedTools,
       status: group.status,
     });
     setEditOpen(true);
@@ -75,13 +72,10 @@ export default function GroupsPage() {
   const handleEdit = async () => {
     if (!editGroup) return;
     try {
-      const allowedTools = editForm.allowedTools.trim()
-        ? editForm.allowedTools.split(",").map((s) => s.trim()).filter(Boolean)
-        : null;
       await updateGroup(editGroup.id, {
         name: editForm.name,
         description: editForm.description || null,
-        allowedTools,
+        allowedTools: editForm.allowedTools,
         status: editForm.status,
       });
       toast.success(t("groups.toast.updated"));
@@ -173,7 +167,7 @@ export default function GroupsPage() {
 
       {/* Create Group Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("groups.createTitle")}</DialogTitle>
           </DialogHeader>
@@ -184,11 +178,11 @@ export default function GroupsPage() {
             </div>
             <div className="space-y-2">
               <Label>{t("groups.descriptionLabel")}</Label>
-              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>{t("groups.allowedToolsLabel")}</Label>
-              <Textarea value={form.allowedTools} onChange={(e) => setForm({ ...form, allowedTools: e.target.value })} />
+              <ToolSelector value={form.allowedTools} onChange={(v) => setForm({ ...form, allowedTools: v })} />
             </div>
           </div>
           <DialogFooter>
@@ -200,7 +194,7 @@ export default function GroupsPage() {
 
       {/* Edit Group Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("groups.editTitle")}</DialogTitle>
           </DialogHeader>
@@ -211,11 +205,11 @@ export default function GroupsPage() {
             </div>
             <div className="space-y-2">
               <Label>{t("groups.descriptionLabel")}</Label>
-              <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+              <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>{t("groups.allowedToolsLabel")}</Label>
-              <Textarea value={editForm.allowedTools} onChange={(e) => setEditForm({ ...editForm, allowedTools: e.target.value })} />
+              <ToolSelector value={editForm.allowedTools} onChange={(v) => setEditForm({ ...editForm, allowedTools: v })} />
             </div>
             <div className="flex items-center gap-2">
               <Label>{t("groups.activeLabel")}</Label>

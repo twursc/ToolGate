@@ -3,6 +3,11 @@
   "common.save": "保存",
   "common.create": "创建",
   "common.add": "添加",
+
+  "toolSelector.allowAll": "允许所有工具（无限制）",
+  "toolSelector.searchPlaceholder": "搜索工具...",
+  "toolSelector.noTools": "暂无可用工具",
+  "toolSelector.selectedCount": "已选择 {{count}} 个工具",
   "common.active": "活跃",
   "common.inactive": "未激活",
   "common.disabled": "已禁用",

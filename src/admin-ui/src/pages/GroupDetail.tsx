@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import ToolSelector from "@/components/ToolSelector";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { ArrowLeft, Pencil, Trash2, UserPlus } from "lucide-react";
@@ -31,7 +31,7 @@ export default function GroupDetailPage() {
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
-    allowedTools: "",
+    allowedTools: null as string[] | null,
     status: "active" as "active" | "disabled",
   });
 
@@ -52,7 +52,7 @@ export default function GroupDetailPage() {
     setEditForm({
       name: group.name,
       description: group.description || "",
-      allowedTools: group.allowedTools ? group.allowedTools.join(", ") : "",
+      allowedTools: group.allowedTools,
       status: group.status,
     });
     setEditOpen(true);
@@ -61,13 +61,10 @@ export default function GroupDetailPage() {
   const handleEdit = async () => {
     if (!id) return;
     try {
-      const allowedTools = editForm.allowedTools.trim()
-        ? editForm.allowedTools.split(",").map((s) => s.trim()).filter(Boolean)
-        : null;
       await updateGroup(id, {
         name: editForm.name,
         description: editForm.description || null,
-        allowedTools,
+        allowedTools: editForm.allowedTools,
         status: editForm.status,
       });
       toast.success(t("groups.toast.updated"));
@@ -231,7 +228,7 @@ export default function GroupDetailPage() {
 
       {/* Edit Group Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("groups.editTitle")}</DialogTitle>
           </DialogHeader>
@@ -242,11 +239,11 @@ export default function GroupDetailPage() {
             </div>
             <div className="space-y-2">
               <Label>{t("groups.descriptionLabel")}</Label>
-              <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+              <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>{t("groups.allowedToolsLabel")}</Label>
-              <Textarea value={editForm.allowedTools} onChange={(e) => setEditForm({ ...editForm, allowedTools: e.target.value })} />
+              <ToolSelector value={editForm.allowedTools} onChange={(v) => setEditForm({ ...editForm, allowedTools: v })} />
             </div>
             <div className="flex items-center gap-2">
               <Label>{t("groups.activeLabel")}</Label>

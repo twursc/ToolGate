@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
+import ToolSelector from "@/components/ToolSelector";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Copy, Trash2, Pencil, Wifi, WifiOff } from "lucide-react";
 
@@ -42,7 +42,7 @@ export default function UserDetail() {
     name: "",
     quota: "0",
     balance: "-1",
-    allowedTools: "",
+    allowedTools: null as string[] | null,
     status: "active" as "active" | "disabled",
   });
   const [regenerate, setRegenerate] = useState(false);
@@ -94,6 +94,7 @@ export default function UserDetail() {
       const res = await createApiKey(id, { name: createForm.name, quota: Number(createForm.quota) });
       setNewKey(res.data.key || "");
       toast.success(t("userDetail.toast.keyCreated"));
+      setCreateOpen(false);
       setCreateForm({ name: "", quota: "0" });
       loadUser();
     } catch {
@@ -126,7 +127,7 @@ export default function UserDetail() {
       name: key.name,
       quota: String(key.quota),
       balance: String(key.balance),
-      allowedTools: key.allowedTools ? key.allowedTools.join(", ") : "",
+      allowedTools: key.allowedTools ?? null,
       status: key.status,
     });
     setRegenerate(false);
@@ -137,15 +138,11 @@ export default function UserDetail() {
   const handleEditSubmit = async () => {
     if (!editKey) return;
     try {
-      const allowedToolsArr = editForm.allowedTools.trim()
-        ? editForm.allowedTools.split(",").map((s) => s.trim()).filter(Boolean)
-        : null;
-
       await updateApiKey(editKey.id, {
         name: editForm.name,
         quota: Number(editForm.quota),
         balance: Number(editForm.balance),
-        allowedTools: allowedToolsArr,
+        allowedTools: editForm.allowedTools,
         status: editForm.status,
       });
 
@@ -469,11 +466,9 @@ export default function UserDetail() {
                 </div>
                 <div className="space-y-2">
                   <Label>{t("userDetail.allowedToolsLabel")}</Label>
-                  <Textarea
-                    rows={3}
-                    placeholder="provider__tool1, provider__tool2"
+                  <ToolSelector
                     value={editForm.allowedTools}
-                    onChange={(e) => setEditForm({ ...editForm, allowedTools: e.target.value })}
+                    onChange={(v) => setEditForm({ ...editForm, allowedTools: v })}
                   />
                 </div>
                 <div className="flex items-center gap-2">
