@@ -6,7 +6,7 @@ server:
 admin:
   username: "admin"
   password: "changeme"
-  sessionSecret: "mcai-mcp-gateway-secret-change-me"
+  sessionSecret: "toolgate-secret-change-me"
 
 storage:
   # "sqlite" or "postgres"

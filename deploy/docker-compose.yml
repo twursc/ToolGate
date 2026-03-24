@@ -1,5 +1,5 @@
 services:
-  mcai-mcp-gateway:
+  toolgate:
     build:
       context: ..
       dockerfile: deploy/Dockerfile

@@ -32,7 +32,7 @@ const ServerConfigSchema = z.object({
 const AdminConfigSchema = z.object({
   username: z.string().default("admin"),
   password: z.string().default("changeme"),
-  sessionSecret: z.string().default("mcai-mcp-gateway-secret-change-me"),
+  sessionSecret: z.string().default("toolgate-secret-change-me"),
 });
 
 const LoggingConfigSchema = z.object({

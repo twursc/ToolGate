@@ -1,11 +1,11 @@
 {
-  "name": "mcai-mcp-gateway",
-  "version": "0.1.0",
-  "description": "MCP Gateway Service with authentication, request logging, and usage-based billing",
+  "name": "toolgate",
+  "version": "1.0",
+  "description": "MCP Proxy Service with Authentication, Logging, Billing and Load Balancing",
   "private": true,
   "type": "module",
   "bin": {
-    "mcai-mcp-gateway": "./build/index.js"
+    "toolgate": "./build/index.js"
   },
   "files": [
     "build"

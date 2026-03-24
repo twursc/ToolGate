@@ -341,7 +341,7 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
   gOnToolCall = options?.onToolCall;
 
   const server = new Server(
-    { name: "mcai-mcp-gateway", version: "1.0" },
+    { name: "ToolGate", version: "1.0" },
     { capabilities: { prompts: {}, resources: {}, tools: {} } }
   );
 
