@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router-dom";
 import { listProviders, getProviderTools, getUsageStats } from "@/lib/api";
 import type { McpProvider, ToolSchema, UsageStats } from "@/lib/types";
@@ -14,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft } from "lucide-react";
 
 function SchemaTable({ schema }: { schema: Record<string, unknown> }) {
+  const { t } = useTranslation();
   const properties = (schema.properties ?? {}) as Record<
     string,
     { type?: string; description?: string; enum?: unknown[] }
@@ -21,17 +23,17 @@ function SchemaTable({ schema }: { schema: Record<string, unknown> }) {
   const required = (schema.required ?? []) as string[];
 
   if (Object.keys(properties).length === 0) {
-    return <p className="text-sm text-muted-foreground">No parameters</p>;
+    return <p className="text-sm text-muted-foreground">{t("providerDetail.noParams")}</p>;
   }
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[180px]">Field</TableHead>
-          <TableHead className="w-[120px]">Type</TableHead>
-          <TableHead>Description</TableHead>
-          <TableHead className="w-[80px]">Required</TableHead>
+          <TableHead className="w-[180px]">{t("providerDetail.field")}</TableHead>
+          <TableHead className="w-[120px]">{t("providerDetail.typeCol")}</TableHead>
+          <TableHead>{t("providerDetail.description")}</TableHead>
+          <TableHead className="w-[80px]">{t("providerDetail.required")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -48,9 +50,9 @@ function SchemaTable({ schema }: { schema: Record<string, unknown> }) {
             </TableCell>
             <TableCell>
               {required.includes(fieldName) ? (
-                <Badge variant="default" className="text-xs">Yes</Badge>
+                <Badge variant="default" className="text-xs">{t("common.yes")}</Badge>
               ) : (
-                <span className="text-xs text-muted-foreground">No</span>
+                <span className="text-xs text-muted-foreground">{t("common.no")}</span>
               )}
             </TableCell>
           </TableRow>
@@ -61,6 +63,7 @@ function SchemaTable({ schema }: { schema: Record<string, unknown> }) {
 }
 
 export default function ProviderDetail() {
+  const { t } = useTranslation();
   const { key } = useParams<{ key: string }>();
   const navigate = useNavigate();
   const [provider, setProvider] = useState<McpProvider | null>(null);
@@ -108,7 +111,7 @@ export default function ProviderDetail() {
     loadUsage();
   }, [key]);
 
-  if (!provider) return <div className="text-muted-foreground">Loading...</div>;
+  if (!provider) return <div className="text-muted-foreground">{t("common.loading")}</div>;
 
   // Group usage by tool
   const toolUsageMap = new Map<string, UsageStats[]>();
@@ -124,7 +127,7 @@ export default function ProviderDetail() {
   return (
     <div>
       <Button variant="ghost" className="mb-4" onClick={() => navigate("/admin/providers")}>
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Providers
+        <ArrowLeft className="h-4 w-4 mr-2" /> {t("providerDetail.backToProviders")}
       </Button>
 
       <Card className="mb-6">
@@ -138,17 +141,17 @@ export default function ProviderDetail() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-3 gap-4 text-sm">
-          <div><span className="text-muted-foreground">Key:</span> {provider.key}</div>
+          <div><span className="text-muted-foreground">{t("providerDetail.keyLabel")}</span> {provider.key}</div>
           <div>
-            <span className="text-muted-foreground">Connection:</span>{" "}
+            <span className="text-muted-foreground">{t("providerDetail.connectionLabel")}</span>{" "}
             {provider.url || `${provider.command} ${provider.args?.join(" ") ?? ""}`}
           </div>
-          <div><span className="text-muted-foreground">Tools:</span> {provider.tools.length}</div>
+          <div><span className="text-muted-foreground">{t("providerDetail.toolsLabel")}</span> {provider.tools.length}</div>
         </CardContent>
       </Card>
 
       {/* Tools Section - flat display */}
-      <h3 className="text-lg font-semibold mb-3">Tools ({tools.length})</h3>
+      <h3 className="text-lg font-semibold mb-3">{t("providerDetail.toolsTitle", { count: tools.length })}</h3>
       <div className="space-y-4 mb-6">
         {tools.map((tool) => (
           <div
@@ -158,7 +161,7 @@ export default function ProviderDetail() {
             <div className="flex items-center gap-2 mb-2">
               <span className="font-mono text-sm font-medium">{tool.name}</span>
               {tool.hasMismatch && (
-                <Badge variant="destructive" className="text-xs">Mismatch</Badge>
+                <Badge variant="destructive" className="text-xs">{t("providerDetail.mismatch")}</Badge>
               )}
             </div>
             {tool.description && (
@@ -170,17 +173,17 @@ export default function ProviderDetail() {
           </div>
         ))}
         {tools.length === 0 && (
-          <p className="text-sm text-muted-foreground">No tools available</p>
+          <p className="text-sm text-muted-foreground">{t("providerDetail.noTools")}</p>
         )}
       </div>
 
       {/* Usage Section */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-semibold">
-          Usage by Tool ({totalCalls} calls, cost: {totalCost.toFixed(4)})
+          {t("providerDetail.usageTitle", { calls: totalCalls, cost: totalCost.toFixed(4) })}
         </h3>
         <div className="flex items-center gap-2">
-          <Label className="text-sm">Month</Label>
+          <Label className="text-sm">{t("providerDetail.month")}</Label>
           <Input
             type="month"
             value={usageMonth}
@@ -195,7 +198,7 @@ export default function ProviderDetail() {
 
       {usage.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center border rounded-md">
-          No usage data for this month
+          {t("providerDetail.noUsage")}
         </p>
       ) : (
         <div className="space-y-4">
@@ -215,16 +218,16 @@ export default function ProviderDetail() {
                 <CardContent className="pt-0">
                   <Tabs defaultValue="by-user">
                     <TabsList>
-                      <TabsTrigger value="by-user">By User</TabsTrigger>
+                      <TabsTrigger value="by-user">{t("providerDetail.byUser")}</TabsTrigger>
                     </TabsList>
                     <TabsContent value="by-user">
                       <div className="rounded-md border">
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>User ID</TableHead>
-                              <TableHead className="text-right">Calls</TableHead>
-                              <TableHead className="text-right">Cost</TableHead>
+                              <TableHead>{t("providerDetail.userId")}</TableHead>
+                              <TableHead className="text-right">{t("providerDetail.callsLabel")}</TableHead>
+                              <TableHead className="text-right">{t("providerDetail.costLabel")}</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,7 @@ export function KeyValueEditor({
   keyPlaceholder = "Key",
   valuePlaceholder = "Value",
 }: KeyValueEditorProps) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<KeyValueEntry[]>(toEntries(value));
 
   useEffect(() => {
@@ -96,7 +98,7 @@ export function KeyValueEditor({
         size="sm"
         onClick={handleAdd}
       >
-        <Plus className="h-4 w-4 mr-1" /> Add
+        <Plus className="h-4 w-4 mr-1" /> {t("common.add")}
       </Button>
     </div>
   );

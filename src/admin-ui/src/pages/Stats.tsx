@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getUsageStats, getRequestLogs, listProviders } from "@/lib/api";
 import type { UsageStats, RequestLog, McpProvider } from "@/lib/types";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ import { Search, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 const PAGE_SIZE = 20;
 
 export default function StatsPage() {
+  const { t } = useTranslation();
   // --- Usage state ---
   const [stats, setStats] = useState<UsageStats[]>([]);
   const [usageTotal, setUsageTotal] = useState(0);
@@ -94,32 +96,32 @@ export default function StatsPage() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Usage Statistics</h2>
+      <h2 className="text-2xl font-semibold mb-6">{t("stats.title")}</h2>
 
       <Tabs defaultValue="usage">
         <TabsList>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
-          <TabsTrigger value="logs">Request Logs</TabsTrigger>
+          <TabsTrigger value="usage">{t("stats.usageTab")}</TabsTrigger>
+          <TabsTrigger value="logs">{t("stats.logsTab")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="usage" className="space-y-4">
           <div className="flex items-end gap-4 flex-wrap">
             <div className="space-y-2">
-              <Label>Billing Month</Label>
+              <Label>{t("stats.billingMonth")}</Label>
               <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>User ID</Label>
-              <Input value={usageUserId} onChange={(e) => setUsageUserId(e.target.value)} placeholder="Filter by user" className="w-48" />
+              <Label>{t("stats.userId")}</Label>
+              <Input value={usageUserId} onChange={(e) => setUsageUserId(e.target.value)} placeholder={t("stats.userIdPlaceholder")} className="w-48" />
             </div>
             <div className="space-y-2">
-              <Label>Provider</Label>
+              <Label>{t("stats.provider")}</Label>
               <Select value={usageProvider} onValueChange={(v) => setUsageProvider(v ?? "")}>
                 <SelectTrigger className="w-48">
-                  <SelectValue placeholder="All providers" />
+                  <SelectValue placeholder={t("stats.allProviders")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">All providers</SelectItem>
+                  <SelectItem value="__all__">{t("stats.allProviders")}</SelectItem>
                   {providers.map((p) => (
                     <SelectItem key={p.key} value={p.key}>{p.key}</SelectItem>
                   ))}
@@ -127,11 +129,11 @@ export default function StatsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Tool Name</Label>
-              <Input value={usageToolName} onChange={(e) => setUsageToolName(e.target.value)} placeholder="Filter by tool" className="w-48" />
+              <Label>{t("stats.toolName")}</Label>
+              <Input value={usageToolName} onChange={(e) => setUsageToolName(e.target.value)} placeholder={t("stats.toolNamePlaceholder")} className="w-48" />
             </div>
             <Button onClick={() => loadStats(0)}>
-              <Search className="h-4 w-4 mr-2" /> Query
+              <Search className="h-4 w-4 mr-2" /> {t("stats.query")}
             </Button>
           </div>
 
@@ -139,10 +141,10 @@ export default function StatsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Username</TableHead>
-                  <TableHead>Tool Name</TableHead>
-                  <TableHead className="text-right">Call Count</TableHead>
-                  <TableHead className="text-right">Total Cost</TableHead>
+                  <TableHead>{t("stats.username")}</TableHead>
+                  <TableHead>{t("stats.toolName")}</TableHead>
+                  <TableHead className="text-right">{t("stats.callCount")}</TableHead>
+                  <TableHead className="text-right">{t("stats.totalCost")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -157,7 +159,7 @@ export default function StatsPage() {
                 {stats.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                      No usage data
+                      {t("stats.noUsage")}
                     </TableCell>
                   </TableRow>
                 )}
@@ -167,13 +169,13 @@ export default function StatsPage() {
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {usageTotal} result{usageTotal !== 1 ? "s" : ""}
+              {t("common.results", { count: usageTotal })}
             </span>
             <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" disabled={usagePage === 0} onClick={() => loadStats(usagePage - 1)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm">Page {usagePage + 1} / {usageTotalPages}</span>
+              <span className="text-sm">{t("common.page", { current: usagePage + 1, total: usageTotalPages })}</span>
               <Button size="sm" variant="outline" disabled={usagePage + 1 >= usageTotalPages} onClick={() => loadStats(usagePage + 1)}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -184,11 +186,11 @@ export default function StatsPage() {
         <TabsContent value="logs" className="space-y-4">
           <div className="flex items-end gap-4">
             <div className="space-y-2">
-              <Label>User ID (optional)</Label>
-              <Input value={logUserId} onChange={(e) => setLogUserId(e.target.value)} placeholder="Filter by user ID" />
+              <Label>{t("stats.userIdOptional")}</Label>
+              <Input value={logUserId} onChange={(e) => setLogUserId(e.target.value)} placeholder={t("stats.userIdLogPlaceholder")} />
             </div>
             <Button onClick={() => loadLogs(0)}>
-              <Search className="h-4 w-4 mr-2" /> Query
+              <Search className="h-4 w-4 mr-2" /> {t("stats.query")}
             </Button>
           </div>
 
@@ -196,14 +198,14 @@ export default function StatsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Username</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Tool</TableHead>
-                  <TableHead className="w-[200px]">Params</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
-                  <TableHead className="text-right">Duration</TableHead>
+                  <TableHead>{t("stats.time")}</TableHead>
+                  <TableHead>{t("stats.username")}</TableHead>
+                  <TableHead>{t("stats.method")}</TableHead>
+                  <TableHead>{t("stats.tool")}</TableHead>
+                  <TableHead className="w-[200px]">{t("stats.params")}</TableHead>
+                  <TableHead>{t("stats.status")}</TableHead>
+                  <TableHead className="text-right">{t("stats.cost")}</TableHead>
+                  <TableHead className="text-right">{t("stats.duration")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -237,7 +239,7 @@ export default function StatsPage() {
                 {logs.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                      No logs found
+                      {t("stats.noLogs")}
                     </TableCell>
                   </TableRow>
                 )}
@@ -247,13 +249,13 @@ export default function StatsPage() {
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {logsTotal} result{logsTotal !== 1 ? "s" : ""}
+              {t("common.results", { count: logsTotal })}
             </span>
             <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" disabled={logsPage === 0} onClick={() => loadLogs(logsPage - 1)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm">Page {logsPage + 1} / {logsTotalPages}</span>
+              <span className="text-sm">{t("common.page", { current: logsPage + 1, total: logsTotalPages })}</span>
               <Button size="sm" variant="outline" disabled={logsPage + 1 >= logsTotalPages} onClick={() => loadLogs(logsPage + 1)}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -266,7 +268,7 @@ export default function StatsPage() {
       <Dialog open={paramsOpen} onOpenChange={setParamsOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
-            <DialogTitle>Request Parameters</DialogTitle>
+            <DialogTitle>{t("stats.requestParams")}</DialogTitle>
           </DialogHeader>
           <pre className="text-sm bg-muted p-4 rounded-md overflow-auto max-h-[60vh] whitespace-pre-wrap font-mono">
             {paramsContent}

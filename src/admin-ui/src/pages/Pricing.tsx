@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { listToolPrices, batchUpdateToolPrices, listProviders } from "@/lib/api";
 import type { ToolPrice, McpProvider } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ interface ToolRow {
 }
 
 export default function PricingPage() {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<ToolRow[]>([]);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -85,11 +87,11 @@ export default function PricingPage() {
     setSaving(true);
     try {
       await batchUpdateToolPrices(prices);
-      toast.success(`Updated ${prices.length} tool price(s)`);
+      toast.success(t("pricing.toast.updated", { count: prices.length }));
       setEdits({});
       load();
     } catch {
-      toast.error("Failed to update prices");
+      toast.error(t("pricing.toast.updateFailed"));
     } finally {
       setSaving(false);
     }
@@ -98,9 +100,9 @@ export default function PricingPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold">Tool Pricing</h2>
+        <h2 className="text-2xl font-semibold">{t("pricing.title")}</h2>
         <Button disabled={!hasEdits || saving} onClick={handleSaveAll}>
-          <Save className="h-4 w-4 mr-2" /> Save All{hasEdits ? ` (${Object.keys(edits).length})` : ""}
+          <Save className="h-4 w-4 mr-2" /> {hasEdits ? t("pricing.saveCount", { count: Object.keys(edits).length }) : t("pricing.saveAll")}
         </Button>
       </div>
 
@@ -108,10 +110,10 @@ export default function PricingPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Provider</TableHead>
-              <TableHead>Tool Name</TableHead>
-              <TableHead>Unit Price</TableHead>
-              <TableHead>Updated</TableHead>
+              <TableHead>{t("pricing.provider")}</TableHead>
+              <TableHead>{t("pricing.toolName")}</TableHead>
+              <TableHead>{t("pricing.unitPrice")}</TableHead>
+              <TableHead>{t("pricing.updated")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -136,7 +138,7 @@ export default function PricingPage() {
             {rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                  No tools found. Add providers to see available tools.
+                  {t("pricing.empty")}
                 </TableCell>
               </TableRow>
             )}

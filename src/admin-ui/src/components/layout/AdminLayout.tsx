@@ -1,6 +1,8 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { logout } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
   Users,
   Server,
@@ -11,18 +13,19 @@ import {
   FlaskConical,
 } from "lucide-react";
 
-const navItems = [
-  { to: "/admin/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/admin/users", label: "Users", icon: Users },
-  { to: "/admin/providers", label: "Providers", icon: Server },
-  { to: "/admin/stats", label: "Usage Stats", icon: BarChart3 },
-  { to: "/admin/pricing", label: "Tool Pricing", icon: DollarSign },
-  { to: "/admin/playground", label: "Playground", icon: FlaskConical },
-];
-
 export default function AdminLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
+
+  const navItems = [
+    { to: "/admin/", label: t("nav.dashboard"), icon: LayoutDashboard },
+    { to: "/admin/users", label: t("nav.users"), icon: Users },
+    { to: "/admin/providers", label: t("nav.providers"), icon: Server },
+    { to: "/admin/stats", label: t("nav.stats"), icon: BarChart3 },
+    { to: "/admin/pricing", label: t("nav.pricing"), icon: DollarSign },
+    { to: "/admin/playground", label: t("nav.playground"), icon: FlaskConical },
+  ];
 
   const handleLogout = async () => {
     try {
@@ -36,8 +39,8 @@ export default function AdminLayout() {
     <div className="flex min-h-screen">
       <aside className="w-60 border-r bg-sidebar text-sidebar-foreground flex flex-col">
         <div className="p-4 border-b">
-          <h1 className="text-lg font-semibold">MCP Gateway</h1>
-          <p className="text-xs text-muted-foreground">Admin Panel</p>
+          <h1 className="text-lg font-semibold">{t("nav.title")}</h1>
+          <p className="text-xs text-muted-foreground">{t("nav.subtitle")}</p>
         </div>
         <nav className="flex-1 p-2 space-y-1">
           {navItems.map((item) => {
@@ -62,13 +65,14 @@ export default function AdminLayout() {
           })}
         </nav>
         <div className="p-2 border-t">
+          <LanguageSwitcher />
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground"
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4" />
-            Sign out
+            {t("nav.signOut")}
           </Button>
         </div>
       </aside>

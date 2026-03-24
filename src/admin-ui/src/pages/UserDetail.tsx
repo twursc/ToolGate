@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router-dom";
 import { getUser, listApiKeys, createApiKey, updateApiKey, deleteApiKey, getUserUsage, regenerateApiKey } from "@/lib/api";
 import type { User, ApiKey } from "@/lib/types";
@@ -20,6 +21,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Plus, Copy, Trash2, Pencil } from "lucide-react";
 
 export default function UserDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
@@ -64,30 +66,30 @@ export default function UserDetail() {
     try {
       const res = await createApiKey(id, { name: createForm.name, quota: Number(createForm.quota) });
       setNewKey(res.data.key || "");
-      toast.success("API Key created");
+      toast.success(t("userDetail.toast.keyCreated"));
       setCreateForm({ name: "", quota: "0" });
       loadUser();
     } catch {
-      toast.error("Failed to create API Key");
+      toast.error(t("userDetail.toast.createKeyFailed"));
     }
   };
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
+    toast.success(t("userDetail.toast.copied"));
   };
 
   const handleDeleteKey = async (keyId: string) => {
-    if (!confirm("Are you sure you want to delete this API Key?")) return;
+    if (!confirm(t("userDetail.confirmDeleteKey"))) return;
     await deleteApiKey(keyId);
-    toast.success("API Key deleted");
+    toast.success(t("userDetail.toast.keyDeleted"));
     loadUser();
   };
 
   const toggleKeyStatus = async (key: ApiKey) => {
     const newStatus = key.status === "active" ? "disabled" : "active";
     await updateApiKey(key.id, { status: newStatus });
-    toast.success(`API Key ${newStatus}`);
+    toast.success(t("userDetail.toast.keyStatusChanged", { status: newStatus }));
     loadUser();
   };
 
@@ -123,23 +125,23 @@ export default function UserDetail() {
       if (regenerate) {
         const res = await regenerateApiKey(editKey.id);
         setRegeneratedKey(res.data.key);
-        toast.success("API Key updated and regenerated");
+        toast.success(t("userDetail.toast.keyRegenerated"));
       } else {
-        toast.success("API Key updated");
+        toast.success(t("userDetail.toast.keyUpdated"));
         setEditOpen(false);
       }
       loadUser();
     } catch {
-      toast.error("Failed to update API Key");
+      toast.error(t("userDetail.toast.updateKeyFailed"));
     }
   };
 
-  if (!user) return <div className="text-muted-foreground">Loading...</div>;
+  if (!user) return <div className="text-muted-foreground">{t("common.loading")}</div>;
 
   return (
     <div>
       <Button variant="ghost" className="mb-4" onClick={() => navigate("/admin/users")}>
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Users
+        <ArrowLeft className="h-4 w-4 mr-2" /> {t("userDetail.backToUsers")}
       </Button>
 
       <Card className="mb-6">
@@ -152,17 +154,17 @@ export default function UserDetail() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-4 text-sm">
-          <div><span className="text-muted-foreground">Email:</span> {user.email || "-"}</div>
-          <div><span className="text-muted-foreground">Note:</span> {user.note || "-"}</div>
-          <div><span className="text-muted-foreground">Created:</span> {new Date(user.createdAt).toLocaleString()}</div>
-          <div><span className="text-muted-foreground">Updated:</span> {new Date(user.updatedAt).toLocaleString()}</div>
+          <div><span className="text-muted-foreground">{t("userDetail.emailLabel")}</span> {user.email || "-"}</div>
+          <div><span className="text-muted-foreground">{t("userDetail.noteLabel")}</span> {user.note || "-"}</div>
+          <div><span className="text-muted-foreground">{t("userDetail.createdLabel")}</span> {new Date(user.createdAt).toLocaleString()}</div>
+          <div><span className="text-muted-foreground">{t("userDetail.updatedLabel")}</span> {new Date(user.updatedAt).toLocaleString()}</div>
         </CardContent>
       </Card>
 
       <Card className="mb-6">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Tool Usage</CardTitle>
+            <CardTitle>{t("userDetail.toolUsage")}</CardTitle>
             <div className="flex items-center gap-2">
               <Input
                 type="month"
@@ -182,9 +184,9 @@ export default function UserDetail() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tool Name</TableHead>
-                    <TableHead className="text-right">Call Count</TableHead>
-                    <TableHead className="text-right">Total Cost</TableHead>
+                    <TableHead>{t("userDetail.toolName")}</TableHead>
+                    <TableHead className="text-right">{t("userDetail.callCount")}</TableHead>
+                    <TableHead className="text-right">{t("userDetail.totalCost")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -196,7 +198,7 @@ export default function UserDetail() {
                     </TableRow>
                   ))}
                   <TableRow className="font-semibold bg-muted/50">
-                    <TableCell>Total</TableCell>
+                    <TableCell>{t("common.total")}</TableCell>
                     <TableCell className="text-right">{usage.reduce((s, u) => s + u.count, 0)}</TableCell>
                     <TableCell className="text-right">{usage.reduce((s, u) => s + u.totalCost, 0).toFixed(4)}</TableCell>
                   </TableRow>
@@ -204,21 +206,21 @@ export default function UserDetail() {
               </Table>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No usage data for this month</p>
+            <p className="text-sm text-muted-foreground">{t("userDetail.noUsage")}</p>
           )}
         </CardContent>
       </Card>
 
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">API Keys</h3>
+        <h3 className="text-lg font-semibold">{t("userDetail.apiKeys")}</h3>
         <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> New API Key
+          <Plus className="h-4 w-4 mr-2" /> {t("userDetail.newApiKey")}
         </Button>
       </div>
 
       {newKey && (
         <div className="mb-4 p-4 rounded-md border bg-muted">
-          <p className="text-sm font-medium mb-2">New API Key (copy now, it won't be shown again):</p>
+          <p className="text-sm font-medium mb-2">{t("userDetail.newKeyNotice")}</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 text-sm bg-background p-2 rounded border break-all">{newKey}</code>
             <Button size="sm" variant="outline" onClick={() => handleCopy(newKey)}>
@@ -226,7 +228,7 @@ export default function UserDetail() {
             </Button>
           </div>
           <Button size="sm" variant="ghost" className="mt-2" onClick={() => setNewKey("")}>
-            Dismiss
+            {t("common.dismiss")}
           </Button>
         </div>
       )}
@@ -235,12 +237,12 @@ export default function UserDetail() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Prefix</TableHead>
-              <TableHead>Quota</TableHead>
-              <TableHead>Balance</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Expires</TableHead>
+              <TableHead>{t("userDetail.keyName")}</TableHead>
+              <TableHead>{t("userDetail.keyPrefix")}</TableHead>
+              <TableHead>{t("userDetail.keyQuota")}</TableHead>
+              <TableHead>{t("userDetail.keyBalance")}</TableHead>
+              <TableHead>{t("userDetail.keyStatus")}</TableHead>
+              <TableHead>{t("userDetail.keyExpires")}</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -249,15 +251,15 @@ export default function UserDetail() {
               <TableRow key={k.id}>
                 <TableCell className="font-medium">{k.name}</TableCell>
                 <TableCell><code className="text-xs">{k.keyPrefix}...</code></TableCell>
-                <TableCell>{k.quota === 0 ? "Unlimited" : k.quota}</TableCell>
-                <TableCell>{k.balance < 0 ? "Unlimited" : k.balance.toFixed(4)}</TableCell>
+                <TableCell>{k.quota === 0 ? t("common.unlimited") : k.quota}</TableCell>
+                <TableCell>{k.balance < 0 ? t("common.unlimited") : k.balance.toFixed(4)}</TableCell>
                 <TableCell>
                   <Badge variant={k.status === "active" ? "default" : "secondary"}>
                     {k.status}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : "Never"}
+                  {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : t("common.never")}
                 </TableCell>
                 <TableCell className="text-right space-x-2">
                   <Button size="sm" variant="ghost" onClick={() => openEditDialog(k)}>
@@ -276,7 +278,7 @@ export default function UserDetail() {
             {keys.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                  No API Keys
+                  {t("userDetail.noKeys")}
                 </TableCell>
               </TableRow>
             )}
@@ -288,21 +290,21 @@ export default function UserDetail() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create API Key</DialogTitle>
+            <DialogTitle>{t("userDetail.createKeyTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Name *</Label>
+              <Label>{t("userDetail.nameRequired")}</Label>
               <Input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Quota (0 = unlimited)</Label>
+              <Label>{t("userDetail.quotaLabel")}</Label>
               <Input type="number" value={createForm.quota} onChange={(e) => setCreateForm({ ...createForm, quota: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateKey} disabled={!createForm.name}>Create</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("common.cancel")}</Button>
+            <Button onClick={handleCreateKey} disabled={!createForm.name}>{t("common.create")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -311,11 +313,11 @@ export default function UserDetail() {
       <Dialog open={editOpen} onOpenChange={(v) => { if (!v) { setEditOpen(false); setRegeneratedKey(""); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit API Key</DialogTitle>
+            <DialogTitle>{t("userDetail.editKeyTitle")}</DialogTitle>
           </DialogHeader>
           {regeneratedKey ? (
             <div className="space-y-4">
-              <p className="text-sm font-medium">New API Key (copy now, it won't be shown again):</p>
+              <p className="text-sm font-medium">{t("userDetail.newKeyNotice")}</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-sm bg-muted p-2 rounded border break-all">{regeneratedKey}</code>
                 <Button size="sm" variant="outline" onClick={() => handleCopy(regeneratedKey)}>
@@ -323,28 +325,28 @@ export default function UserDetail() {
                 </Button>
               </div>
               <DialogFooter>
-                <Button onClick={() => { setEditOpen(false); setRegeneratedKey(""); }}>Done</Button>
+                <Button onClick={() => { setEditOpen(false); setRegeneratedKey(""); }}>{t("common.done")}</Button>
               </DialogFooter>
             </div>
           ) : (
             <>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Name</Label>
+                  <Label>{t("userDetail.keyName")}</Label>
                   <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Quota (0 = unlimited)</Label>
+                    <Label>{t("userDetail.quotaLabel")}</Label>
                     <Input type="number" value={editForm.quota} onChange={(e) => setEditForm({ ...editForm, quota: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Balance (-1 = unlimited)</Label>
+                    <Label>{t("userDetail.balanceLabel")}</Label>
                     <Input type="number" step="0.0001" value={editForm.balance} onChange={(e) => setEditForm({ ...editForm, balance: e.target.value })} />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Allowed Tools (comma-separated, empty = all)</Label>
+                  <Label>{t("userDetail.allowedToolsLabel")}</Label>
                   <Textarea
                     rows={3}
                     placeholder="provider__tool1, provider__tool2"
@@ -353,7 +355,7 @@ export default function UserDetail() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Label>Status</Label>
+                  <Label>{t("userDetail.statusLabel")}</Label>
                   <Switch
                     checked={editForm.status === "active"}
                     onCheckedChange={(v) => setEditForm({ ...editForm, status: v ? "active" : "disabled" })}
@@ -367,13 +369,13 @@ export default function UserDetail() {
                     onCheckedChange={(v) => setRegenerate(!!v)}
                   />
                   <Label htmlFor="regenerate" className="text-sm font-normal cursor-pointer">
-                    Regenerate API Key (will invalidate the current key)
+                    {t("userDetail.regenerateKey")}
                   </Label>
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-                <Button onClick={handleEditSubmit}>Save</Button>
+                <Button variant="outline" onClick={() => setEditOpen(false)}>{t("common.cancel")}</Button>
+                <Button onClick={handleEditSubmit}>{t("common.save")}</Button>
               </DialogFooter>
             </>
           )}

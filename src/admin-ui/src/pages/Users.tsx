@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { listUsers, createUser, updateUser } from "@/lib/api";
 import type { User } from "@/lib/types";
@@ -17,6 +18,7 @@ import { toast } from "sonner";
 import { Plus, Pencil } from "lucide-react";
 
 export default function UsersPage() {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", note: "" });
@@ -33,12 +35,12 @@ export default function UsersPage() {
   const handleCreate = async () => {
     try {
       await createUser(form);
-      toast.success("User created");
+      toast.success(t("users.toast.created"));
       setOpen(false);
       setForm({ username: "", email: "", note: "" });
       load();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to create user";
+      const msg = e instanceof Error ? e.message : t("users.toast.createFailed");
       toast.error(msg);
     }
   };
@@ -46,7 +48,7 @@ export default function UsersPage() {
   const toggleStatus = async (user: User) => {
     const newStatus = user.status === "active" ? "disabled" : "active";
     await updateUser(user.id, { status: newStatus });
-    toast.success(`User ${newStatus}`);
+    toast.success(t("users.toast.statusChanged", { status: newStatus }));
     load();
   };
 
@@ -68,20 +70,20 @@ export default function UsersPage() {
         email: editForm.email || null,
         status: editForm.status,
       });
-      toast.success("User updated");
+      toast.success(t("users.toast.updated"));
       setEditOpen(false);
       load();
     } catch {
-      toast.error("Failed to update user");
+      toast.error(t("users.toast.updateFailed"));
     }
   };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold">Users</h2>
+        <h2 className="text-2xl font-semibold">{t("users.title")}</h2>
         <Button onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> New User
+          <Plus className="h-4 w-4 mr-2" /> {t("users.newUser")}
         </Button>
       </div>
 
@@ -89,11 +91,11 @@ export default function UsersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Username</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t("users.username")}</TableHead>
+              <TableHead>{t("users.email")}</TableHead>
+              <TableHead>{t("users.status")}</TableHead>
+              <TableHead>{t("users.created")}</TableHead>
+              <TableHead className="text-right">{t("users.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -127,7 +129,7 @@ export default function UsersPage() {
             {users.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                  No users yet
+                  {t("users.empty")}
                 </TableCell>
               </TableRow>
             )}
@@ -139,25 +141,25 @@ export default function UsersPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create User</DialogTitle>
+            <DialogTitle>{t("users.createTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Username *</Label>
+              <Label>{t("users.usernameRequired")}</Label>
               <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
+              <Label>{t("users.email")}</Label>
               <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Note</Label>
+              <Label>{t("users.note")}</Label>
               <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!form.username}>Create</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+            <Button onClick={handleCreate} disabled={!form.username}>{t("common.create")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -166,19 +168,19 @@ export default function UsersPage() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
+            <DialogTitle>{t("users.editTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Username</Label>
+              <Label>{t("users.username")}</Label>
               <Input value={editForm.username} onChange={(e) => setEditForm({ ...editForm, username: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
+              <Label>{t("users.email")}</Label>
               <Input value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
             </div>
             <div className="flex items-center gap-2">
-              <Label>Active</Label>
+              <Label>{t("users.activeLabel")}</Label>
               <Switch
                 checked={editForm.status === "active"}
                 onCheckedChange={(v) => setEditForm({ ...editForm, status: v ? "active" : "disabled" })}
@@ -187,8 +189,8 @@ export default function UsersPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={!editForm.username}>Save</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("common.cancel")}</Button>
+            <Button onClick={handleEdit} disabled={!editForm.username}>{t("common.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

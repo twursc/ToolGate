@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
   listProviders,
@@ -99,6 +100,7 @@ const emptyProfileForm: ProfileForm = {
 // --- Main Page ---
 
 export default function ProvidersPage() {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<McpProvider[]>([]);
   const [providerUsage, setProviderUsage] = useState<Record<string, { count: number; cost: number }>>({});
   const [profileStatsMap, setProfileStatsMap] = useState<Record<string, Record<string, { count: number; cost: number }>>>({}); // providerKey -> profileKey -> stats
@@ -201,31 +203,31 @@ export default function ProvidersPage() {
 
       if (editingProviderKey) {
         await updateProvider(editingProviderKey, data);
-        toast.success("Provider updated");
+        toast.success(t("providers.toast.updated"));
       } else {
         data.key = providerForm.key;
         await createProvider(data);
-        toast.success("Provider created");
+        toast.success(t("providers.toast.created"));
       }
       setProviderOpen(false);
       load();
     } catch {
       toast.error(
         editingProviderKey
-          ? "Failed to update provider"
-          : "Failed to create provider"
+          ? t("providers.toast.updateFailed")
+          : t("providers.toast.createFailed")
       );
     }
   };
 
   const handleDeleteProvider = async (key: string) => {
-    if (!confirm(`Delete provider "${key}" and all its profiles?`)) return;
+    if (!confirm(t("providers.confirmDelete", { key }))) return;
     try {
       await deleteProvider(key);
-      toast.success("Provider deleted");
+      toast.success(t("providers.toast.deleted"));
       load();
     } catch {
-      toast.error("Failed to delete provider");
+      toast.error(t("providers.toast.deleteFailed"));
     }
   };
 
@@ -275,19 +277,19 @@ export default function ProvidersPage() {
 
       if (profileKey) {
         await updateProfile(providerKey, profileKey, data);
-        toast.success("Profile updated");
+        toast.success(t("providers.toast.profileUpdated"));
       } else {
         data.key = profileForm.key;
         await createProfile(providerKey, data);
-        toast.success("Profile created");
+        toast.success(t("providers.toast.profileCreated"));
       }
       setProfileOpen(false);
       load();
     } catch {
       toast.error(
         profileKey
-          ? "Failed to update profile"
-          : "Failed to create profile"
+          ? t("providers.toast.profileUpdateFailed")
+          : t("providers.toast.profileCreateFailed")
       );
     }
   };
@@ -296,13 +298,13 @@ export default function ProvidersPage() {
     providerKey: string,
     profileKey: string
   ) => {
-    if (!confirm(`Delete profile "${profileKey}"?`)) return;
+    if (!confirm(t("providers.confirmDeleteProfile", { key: profileKey }))) return;
     try {
       await deleteProfile(providerKey, profileKey);
-      toast.success("Profile deleted");
+      toast.success(t("providers.toast.profileDeleted"));
       load();
     } catch {
-      toast.error("Failed to delete profile");
+      toast.error(t("providers.toast.profileDeleteFailed"));
     }
   };
 
@@ -311,10 +313,10 @@ export default function ProvidersPage() {
   const handleReload = async () => {
     try {
       await reloadProviders();
-      toast.success("Providers reloaded");
+      toast.success(t("providers.toast.reloaded"));
       load();
     } catch {
-      toast.error("Failed to reload");
+      toast.error(t("providers.toast.reloadFailed"));
     }
   };
 
@@ -330,13 +332,13 @@ export default function ProvidersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold">Providers</h2>
+        <h2 className="text-2xl font-semibold">{t("providers.title")}</h2>
         <div className="flex gap-2">
           <Button onClick={openCreateProvider}>
-            <Plus className="h-4 w-4 mr-2" /> Add Provider
+            <Plus className="h-4 w-4 mr-2" /> {t("providers.addProvider")}
           </Button>
           <Button variant="outline" onClick={handleReload}>
-            <RefreshCw className="h-4 w-4 mr-2" /> Apply Config
+            <RefreshCw className="h-4 w-4 mr-2" /> {t("providers.applyConfig")}
           </Button>
         </div>
       </div>
@@ -354,7 +356,7 @@ export default function ProvidersPage() {
                   {p.command && <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{p.command} {p.args?.join(" ")}</code>}
                   <Badge variant="outline">{p.type}</Badge>
                   <Badge variant={p.active ? "default" : "secondary"}>
-                    {p.active ? "active" : "inactive"}
+                    {p.active ? t("common.active") : t("common.inactive")}
                   </Badge>
                 </div>
                 <div className="flex items-center gap-1">
@@ -382,7 +384,7 @@ export default function ProvidersPage() {
               {p.schemaErrors.length > 0 && (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Schema Validation Errors</AlertTitle>
+                  <AlertTitle>{t("providers.schemaErrors")}</AlertTitle>
                   <AlertDescription>
                     <ul className="list-disc list-inside text-sm mt-1 space-y-0.5">
                       {p.schemaErrors.map((err, i) => (
@@ -396,15 +398,15 @@ export default function ProvidersPage() {
               {/* Summary stats */}
               <div className="flex items-center gap-6 text-sm">
                 <span className="text-muted-foreground">
-                  Tools: <span className="text-foreground font-medium">{p.tools.length}</span>
+                  {t("providers.tools")} <span className="text-foreground font-medium">{p.tools.length}</span>
                 </span>
                 {providerUsage[p.key] && (
                   <>
                     <span className="text-muted-foreground">
-                      Calls (this month): <span className="text-foreground font-medium">{providerUsage[p.key].count}</span>
+                      {t("providers.callsThisMonth")} <span className="text-foreground font-medium">{providerUsage[p.key].count}</span>
                     </span>
                     <span className="text-muted-foreground">
-                      Cost: <span className="text-foreground font-medium">{providerUsage[p.key].cost.toFixed(4)}</span>
+                      {t("providers.cost")} <span className="text-foreground font-medium">{providerUsage[p.key].cost.toFixed(4)}</span>
                     </span>
                   </>
                 )}
@@ -416,12 +418,12 @@ export default function ProvidersPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Profile</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>URL Override</TableHead>
-                        <TableHead>Config</TableHead>
-                        <TableHead className="text-right">Calls</TableHead>
-                        <TableHead className="text-right">Cost</TableHead>
+                        <TableHead>{t("providers.profile")}</TableHead>
+                        <TableHead>{t("users.status")}</TableHead>
+                        <TableHead>{t("providers.urlOverride")}</TableHead>
+                        <TableHead>{t("providers.config")}</TableHead>
+                        <TableHead className="text-right">{t("providers.calls")}</TableHead>
+                        <TableHead className="text-right">{t("providers.cost")}</TableHead>
                         <TableHead className="w-[80px]"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -447,7 +449,7 @@ export default function ProvidersPage() {
                                 variant="outline"
                                 className="text-xs ml-1"
                               >
-                                inactive
+                                {t("common.inactive")}
                               </Badge>
                             )}
                           </TableCell>
@@ -457,10 +459,10 @@ export default function ProvidersPage() {
                           <TableCell className="text-sm text-muted-foreground">
                             {profile.headers &&
                               Object.keys(profile.headers).length > 0 &&
-                              `${Object.keys(profile.headers).length} headers`}
+                              t("providers.headerCount", { count: Object.keys(profile.headers).length })}
                             {profile.env &&
                               Object.keys(profile.env).length > 0 &&
-                              `${Object.keys(profile.env).length} env vars`}
+                              t("providers.envCount", { count: Object.keys(profile.env).length })}
                             {!profile.headers &&
                               !profile.env &&
                               "-"}
@@ -512,7 +514,7 @@ export default function ProvidersPage() {
                     className="h-6 text-xs"
                     onClick={() => openCreateProfile(p.key, p.type)}
                   >
-                    <Plus className="h-3 w-3 mr-1" /> Add Profile
+                    <Plus className="h-3 w-3 mr-1" /> {t("providers.addProfile")}
                   </Button>
                 </div>
               </div>
@@ -521,7 +523,7 @@ export default function ProvidersPage() {
         ))}
         {providers.length === 0 && (
           <p className="text-muted-foreground text-center py-8">
-            No providers configured
+            {t("providers.empty")}
           </p>
         )}
       </div>
@@ -531,33 +533,33 @@ export default function ProvidersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingProviderKey ? "Edit Provider" : "Add Provider"}
+              {editingProviderKey ? t("providers.editProviderTitle") : t("providers.addProviderTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Key *</Label>
+              <Label>{t("providers.keyRequired")}</Label>
               <Input
                 value={providerForm.key}
                 onChange={(e) =>
                   setProviderForm({ ...providerForm, key: e.target.value })
                 }
-                placeholder="unique-provider-key"
+                placeholder={t("providers.keyPlaceholder")}
                 disabled={!!editingProviderKey}
               />
             </div>
             <div className="space-y-2">
-              <Label>Name</Label>
+              <Label>{t("providers.name")}</Label>
               <Input
                 value={providerForm.name}
                 onChange={(e) =>
                   setProviderForm({ ...providerForm, name: e.target.value })
                 }
-                placeholder="Display name (optional)"
+                placeholder={t("providers.namePlaceholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label>Type</Label>
+              <Label>{t("providers.type")}</Label>
               <Select
                 value={providerForm.type}
                 onValueChange={(v) => {
@@ -570,16 +572,16 @@ export default function ProvidersPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="http">HTTP (Streamable)</SelectItem>
-                  <SelectItem value="sse">SSE</SelectItem>
-                  <SelectItem value="stdio">Stdio</SelectItem>
+                  <SelectItem value="http">{t("providers.typeHttp")}</SelectItem>
+                  <SelectItem value="sse">{t("providers.typeSse")}</SelectItem>
+                  <SelectItem value="stdio">{t("providers.typeStdio")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {(providerForm.type === "sse" ||
               providerForm.type === "http") && (
               <div className="space-y-2">
-                <Label>Base URL *</Label>
+                <Label>{t("providers.baseUrl")}</Label>
                 <Input
                   value={providerForm.url}
                   onChange={(e) =>
@@ -592,7 +594,7 @@ export default function ProvidersPage() {
             {providerForm.type === "stdio" && (
               <>
                 <div className="space-y-2">
-                  <Label>Command *</Label>
+                  <Label>{t("providers.command")}</Label>
                   <Input
                     value={providerForm.command}
                     onChange={(e) =>
@@ -605,7 +607,7 @@ export default function ProvidersPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Args (space-separated)</Label>
+                  <Label>{t("providers.argsLabel")}</Label>
                   <Input
                     value={providerForm.args}
                     onChange={(e) =>
@@ -626,18 +628,18 @@ export default function ProvidersPage() {
                   setProviderForm({ ...providerForm, active: checked })
                 }
               />
-              <Label>Active</Label>
+              <Label>{t("providers.activeLabel")}</Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProviderOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={handleProviderSubmit}
               disabled={!isProviderFormValid}
             >
-              {editingProviderKey ? "Save" : "Add"}
+              {editingProviderKey ? t("common.save") : t("common.add")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -649,19 +651,19 @@ export default function ProvidersPage() {
           <DialogHeader>
             <DialogTitle>
               {editingProfileContext?.profileKey
-                ? "Edit Profile"
-                : "Add Profile"}
+                ? t("providers.editProfileTitle")
+                : t("providers.addProfileTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Profile Key *</Label>
+              <Label>{t("providers.profileKey")}</Label>
               <Input
                 value={profileForm.key}
                 onChange={(e) =>
                   setProfileForm({ ...profileForm, key: e.target.value })
                 }
-                placeholder="profile-key"
+                placeholder={t("providers.profileKeyPlaceholder")}
                 disabled={!!editingProfileContext?.profileKey}
               />
             </div>
@@ -670,7 +672,7 @@ export default function ProvidersPage() {
                 editingProfileContext.providerType === "http") && (
                 <>
                   <div className="space-y-2">
-                    <Label>URL Override</Label>
+                    <Label>{t("providers.urlOverrideLabel")}</Label>
                     <Input
                       value={profileForm.url}
                       onChange={(e) =>
@@ -679,30 +681,30 @@ export default function ProvidersPage() {
                           url: e.target.value,
                         })
                       }
-                      placeholder="Leave empty to use provider URL"
+                      placeholder={t("providers.urlOverridePlaceholder")}
                     />
                   </div>
                   <KeyValueEditor
-                    label="Custom Headers"
+                    label={t("providers.customHeaders")}
                     value={profileForm.headers}
                     onChange={(headers) =>
                       setProfileForm({ ...profileForm, headers })
                     }
-                    keyPlaceholder="Header name"
-                    valuePlaceholder="Header value"
+                    keyPlaceholder={t("providers.headerNamePlaceholder")}
+                    valuePlaceholder={t("providers.headerValuePlaceholder")}
                   />
                 </>
               )}
             {editingProfileContext &&
               editingProfileContext.providerType === "stdio" && (
                 <KeyValueEditor
-                  label="Environment Variables"
+                  label={t("providers.envVars")}
                   value={profileForm.env}
                   onChange={(env) =>
                     setProfileForm({ ...profileForm, env })
                   }
-                  keyPlaceholder="Variable name"
-                  valuePlaceholder="Variable value"
+                  keyPlaceholder={t("providers.varNamePlaceholder")}
+                  valuePlaceholder={t("providers.varValuePlaceholder")}
                 />
               )}
             <div className="flex items-center gap-2">
@@ -712,18 +714,18 @@ export default function ProvidersPage() {
                   setProfileForm({ ...profileForm, active: checked })
                 }
               />
-              <Label>Active</Label>
+              <Label>{t("providers.activeLabel")}</Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProfileOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={handleProfileSubmit}
               disabled={!isProfileFormValid}
             >
-              {editingProfileContext?.profileKey ? "Save" : "Add"}
+              {editingProfileContext?.profileKey ? t("common.save") : t("common.add")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { playgroundListTools, playgroundCall } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,7 @@ function DynamicForm({
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const properties = (schema.properties ?? {}) as Record<
     string,
     { type?: string; description?: string; enum?: unknown[]; default?: unknown }
@@ -52,7 +54,7 @@ function DynamicForm({
   const required = (schema.required ?? []) as string[];
 
   if (Object.keys(properties).length === 0) {
-    return <p className="text-sm text-muted-foreground">This tool has no parameters.</p>;
+    return <p className="text-sm text-muted-foreground">{t("playground.noParams")}</p>;
   }
 
   return (
@@ -76,7 +78,7 @@ function DynamicForm({
                 onValueChange={(v) => onChange(key, v)}
               >
                 <SelectTrigger id={key}>
-                  <SelectValue placeholder="Select..." />
+                  <SelectValue placeholder={t("playground.chooseTool")} />
                 </SelectTrigger>
                 <SelectContent>
                   {prop.enum.map((opt) => (
@@ -137,6 +139,7 @@ function prettyPrint(value: unknown): string {
 }
 
 export default function PlaygroundPage() {
+  const { t } = useTranslation();
   const [tools, setTools] = useState<PlaygroundTool[]>([]);
   const [selectedTool, setSelectedTool] = useState<string>("");
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
@@ -204,24 +207,24 @@ export default function PlaygroundPage() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Playground</h2>
+      <h2 className="text-2xl font-semibold mb-6">{t("playground.title")}</h2>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Tool selection + form */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Select Tool</CardTitle>
+            <CardTitle className="text-base">{t("playground.selectTool")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {loadingTools ? (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Loading tools...</span>
+                <span className="text-sm">{t("playground.loadingTools")}</span>
               </div>
             ) : (
               <Select value={selectedTool} onValueChange={handleToolChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose a tool..." />
+                  <SelectValue placeholder={t("playground.chooseTool")} />
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(grouped).map(([providerKey, providerTools]) => (
@@ -260,9 +263,9 @@ export default function PlaygroundPage() {
                   className="w-full"
                 >
                   {calling ? (
-                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Calling...</>
+                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {t("playground.calling")}</>
                   ) : (
-                    <><Play className="h-4 w-4 mr-2" /> Run Tool</>
+                    <><Play className="h-4 w-4 mr-2" /> {t("playground.runTool")}</>
                   )}
                 </Button>
               </>
@@ -274,7 +277,7 @@ export default function PlaygroundPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center justify-between">
-              <span>Response</span>
+              <span>{t("playground.response")}</span>
               {result && (
                 <Badge variant="outline" className="text-xs font-normal">
                   {result.responseTimeMs}ms
@@ -290,14 +293,14 @@ export default function PlaygroundPage() {
             )}
             {!error && !result && (
               <p className="text-sm text-muted-foreground">
-                Select a tool and click Run to see the response here.
+                {t("playground.selectPrompt")}
               </p>
             )}
             {result && (
               <div className="space-y-3">
                 {result.profileKey && (
                   <div className="text-xs text-muted-foreground">
-                    Profile: <code className="bg-muted px-1 rounded">{result.profileKey}</code>
+                    {t("playground.profile")} <code className="bg-muted px-1 rounded">{result.profileKey}</code>
                   </div>
                 )}
                 <pre className="text-sm bg-muted/50 border rounded-md p-4 font-mono whitespace-pre-wrap overflow-auto max-h-[500px]">
