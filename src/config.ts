@@ -251,7 +251,7 @@ export function loadGatewayConfig(configPath?: string): GatewayConfig {
 }
 
 export function loadMcpServersConfig(configPath?: string): McpServersFileConfig {
-  const filePath = configPath ?? resolve(process.cwd(), "config/mcp_server.json");
+  const filePath = configPath ?? resolve(process.cwd(), "data/mcp_server.json");
 
   if (!existsSync(filePath)) {
     cachedMcpServers = { mcpProviders: {} };

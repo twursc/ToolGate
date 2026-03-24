@@ -15,7 +15,7 @@ import {
 } from "../proxy/mcp-proxy.js";
 import { getGatewayConfig } from "../config.js";
 
-const MCP_SERVER_CONFIG_PATH = join(process.cwd(), "config", "mcp_server.json");
+const MCP_SERVER_CONFIG_PATH = join(process.cwd(), "data", "mcp_server.json");
 
 function persistConfig(config: ReturnType<typeof loadMcpServersConfig>): void {
   const dir = dirname(MCP_SERVER_CONFIG_PATH);

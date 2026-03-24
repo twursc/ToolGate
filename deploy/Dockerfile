@@ -6,8 +6,8 @@ RUN apk add --no-cache python3 make g++
 WORKDIR /app
 
 # Install backend dependencies
-COPY .yarnrc package.json yarn.lock ./
-RUN yarn install --frozen-lockfile
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile || yarn install --frozen-lockfile
 
 # Install frontend dependencies
 COPY src/admin-ui/package.json src/admin-ui/yarn.lock ./src/admin-ui/
@@ -31,9 +31,8 @@ WORKDIR /app
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/node_modules ./node_modules
 COPY gateway.config.yaml ./
-COPY config ./config
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/config
 
 ENV NODE_ENV=production
 
