@@ -310,13 +310,19 @@ export default function ProvidersPage() {
 
   // --- Reload ---
 
+  const [reloading, setReloading] = useState(false);
+
   const handleReload = async () => {
+    if (reloading) return;
+    setReloading(true);
     try {
       await reloadProviders();
       toast.success(t("providers.toast.reloaded"));
       load();
     } catch {
       toast.error(t("providers.toast.reloadFailed"));
+    } finally {
+      setReloading(false);
     }
   };
 
@@ -337,8 +343,8 @@ export default function ProvidersPage() {
           <Button onClick={openCreateProvider}>
             <Plus className="h-4 w-4 mr-2" /> {t("providers.addProvider")}
           </Button>
-          <Button variant="outline" onClick={handleReload}>
-            <RefreshCw className="h-4 w-4 mr-2" /> {t("providers.applyConfig")}
+          <Button variant="outline" onClick={handleReload} disabled={reloading}>
+            <RefreshCw className={`h-4 w-4 mr-2${reloading ? " animate-spin" : ""}`} /> {t("providers.applyConfig")}
           </Button>
         </div>
       </div>
