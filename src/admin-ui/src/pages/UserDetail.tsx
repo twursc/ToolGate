@@ -464,13 +464,6 @@ export default function UserDetail() {
                     <Input type="number" step="0.0001" value={editForm.balance} onChange={(e) => setEditForm({ ...editForm, balance: e.target.value })} />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>{t("userDetail.allowedToolsLabel")}</Label>
-                  <ToolSelector
-                    value={editForm.allowedTools}
-                    onChange={(v) => setEditForm({ ...editForm, allowedTools: v })}
-                  />
-                </div>
                 <div className="flex items-center gap-2">
                   <Label>{t("userDetail.statusLabel")}</Label>
                   <Switch
@@ -478,6 +471,13 @@ export default function UserDetail() {
                     onCheckedChange={(v) => setEditForm({ ...editForm, status: v ? "active" : "disabled" })}
                   />
                   <span className="text-sm text-muted-foreground">{editForm.status}</span>
+                </div>
+                <div className="space-y-2 pt-4 border-t">
+                  <Label style={{ fontWeight: 'bold' }}>{t("userDetail.allowedToolsLabel")}</Label>
+                  <ToolSelector
+                    value={editForm.allowedTools}
+                    onChange={(v) => setEditForm({ ...editForm, allowedTools: v })}
+                  />
                 </div>
                 <div className="flex items-center gap-2 pt-2 border-t">
                   <Checkbox

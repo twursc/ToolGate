@@ -26,7 +26,7 @@ logging:
   retentionDays: 90
 
 proxy:
-  serverToolnameSeparator: "__"
+  serverToolnameSeparator: ":"
   retrySseToolCall: true
   sseToolCallMaxRetries: 2
   sseToolCallRetryDelayBaseMs: 300

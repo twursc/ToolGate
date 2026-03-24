@@ -85,12 +85,6 @@ export default function ToolSelector({ value, onChange }: ToolSelectorProps) {
             className="h-8"
           />
 
-          {!allowAll && value && value.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {t("toolSelector.selectedCount", { count: value.length })}
-            </p>
-          )}
-
           <div className="max-h-64 overflow-y-auto rounded-md border p-2 space-y-3">
             {Object.keys(grouped).length === 0 ? (
               <p className="text-sm text-muted-foreground py-2">{t("toolSelector.noTools")}</p>
@@ -112,9 +106,9 @@ export default function ToolSelector({ value, onChange }: ToolSelectorProps) {
                         />
                         <div className="min-w-0">
                           <span className="text-sm font-mono">{tool.name}</span>
-                          {tool.description && (
+                          {/* {tool.description && (
                             <p className="text-xs text-muted-foreground truncate">{tool.description}</p>
-                          )}
+                          )} */}
                         </div>
                       </div>
                     ))}
@@ -123,6 +117,12 @@ export default function ToolSelector({ value, onChange }: ToolSelectorProps) {
               ))
             )}
           </div>
+
+          {!allowAll && value && value.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {t("toolSelector.selectedCount", { count: value.length })}
+            </p>
+          )}
         </>
       )}
     </div>
