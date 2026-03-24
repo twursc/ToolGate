@@ -12,6 +12,7 @@ import { Save } from "lucide-react";
 
 interface ToolRow {
   toolName: string;
+  displayName: string;
   provider: string;
   unitPrice: number;
   updatedAt: string | null;
@@ -37,14 +38,28 @@ export default function PricingPage() {
       priceMap.set(p.toolName, p);
     }
 
-    // Collect all tools from providers
+    // Build provider key set and detect separator from tool names
+    const providerKeys = new Set(providers.map((p) => p.key));
+
+    // Extract provider key from a qualified tool name by matching known provider keys
+    const parseToolName = (qualifiedName: string): { provider: string; displayName: string } => {
+      for (const pk of providerKeys) {
+        if (qualifiedName.startsWith(pk) && qualifiedName.length > pk.length) {
+          return { provider: pk, displayName: qualifiedName.slice(pk.length + 1) };
+        }
+      }
+      return { provider: "-", displayName: qualifiedName };
+    };
+
+    // Collect all tools from providers (tools are already qualified names)
     const allTools = new Map<string, ToolRow>();
     for (const prov of providers) {
       for (const tool of prov.tools) {
-        const fullName = `${prov.key}__${tool}`;
-        const existing = priceMap.get(fullName);
-        allTools.set(fullName, {
-          toolName: fullName,
+        const existing = priceMap.get(tool);
+        const { displayName } = parseToolName(tool);
+        allTools.set(tool, {
+          toolName: tool,
+          displayName,
           provider: prov.key,
           unitPrice: existing?.unitPrice ?? 0,
           updatedAt: existing?.updatedAt ?? null,
@@ -55,10 +70,11 @@ export default function PricingPage() {
     // Also include prices that don't match any current provider tool
     for (const p of prices) {
       if (!allTools.has(p.toolName)) {
-        const sep = p.toolName.indexOf("__");
+        const parsed = parseToolName(p.toolName);
         allTools.set(p.toolName, {
           toolName: p.toolName,
-          provider: sep > 0 ? p.toolName.slice(0, sep) : "-",
+          displayName: parsed.displayName,
+          provider: parsed.provider,
           unitPrice: p.unitPrice,
           updatedAt: p.updatedAt,
         });
@@ -120,7 +136,7 @@ export default function PricingPage() {
             {rows.map((r) => (
               <TableRow key={r.toolName} className={edits[r.toolName] !== undefined ? "bg-muted/50" : ""}>
                 <TableCell className="text-muted-foreground">{r.provider}</TableCell>
-                <TableCell className="font-medium">{r.toolName}</TableCell>
+                <TableCell className="font-medium">{r.displayName}</TableCell>
                 <TableCell>
                   <Input
                     type="number"
