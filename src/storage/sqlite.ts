@@ -485,6 +485,15 @@ export class SqliteStorage implements IStorage {
     }));
   }
 
+  async getProfileMonthlyCost(providerKey: string, profileKey: string, billingMonth: string): Promise<number> {
+    const row = this.db.prepare(
+      `SELECT COALESCE(SUM(cost), 0) as total_cost
+       FROM request_logs
+       WHERE provider_key = ? AND profile_key = ? AND created_at >= ? AND created_at < ?`
+    ).get(providerKey, profileKey, billingMonth + "-01", billingMonth + "-32") as Record<string, unknown> | undefined;
+    return (row?.total_cost as number) ?? 0;
+  }
+
   // --- Tool Pricing ---
 
   async setToolPrice(providerKey: string, toolName: string, unitPrice: number): Promise<void> {

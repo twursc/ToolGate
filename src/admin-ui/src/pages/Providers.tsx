@@ -47,6 +47,7 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   Plus,
@@ -67,6 +68,11 @@ interface ProviderForm {
   command: string;
   args: string;
   active: boolean;
+  cbEnabled: boolean;
+  cbFailureThreshold: number;
+  cbFailureStatusCodes: string;
+  cbTripOnContent: string;
+  cbCooldownSeconds: number;
 }
 
 const emptyProviderForm: ProviderForm = {
@@ -77,6 +83,11 @@ const emptyProviderForm: ProviderForm = {
   command: "",
   args: "",
   active: true,
+  cbEnabled: false,
+  cbFailureThreshold: 5,
+  cbFailureStatusCodes: "429, 500, 502, 503",
+  cbTripOnContent: "",
+  cbCooldownSeconds: 60,
 };
 
 // --- Profile Form ---
@@ -87,6 +98,7 @@ interface ProfileForm {
   url: string;
   headers: Record<string, string>;
   env: Record<string, string>;
+  monthlyBudget: number;
 }
 
 const emptyProfileForm: ProfileForm = {
@@ -95,6 +107,7 @@ const emptyProfileForm: ProfileForm = {
   url: "",
   headers: {},
   env: {},
+  monthlyBudget: 0,
 };
 
 // --- Main Page ---
@@ -175,6 +188,7 @@ export default function ProvidersPage() {
 
   const openEditProvider = (p: McpProvider) => {
     setEditingProviderKey(p.key);
+    const cb = p.circuitBreaker;
     setProviderForm({
       key: p.key,
       name: p.name || "",
@@ -183,6 +197,11 @@ export default function ProvidersPage() {
       command: p.command || "",
       args: p.args?.join(" ") || "",
       active: p.active,
+      cbEnabled: cb?.enabled ?? false,
+      cbFailureThreshold: cb?.failureThreshold ?? 5,
+      cbFailureStatusCodes: cb?.failureStatusCodes?.join(", ") ?? "429, 500, 502, 503",
+      cbTripOnContent: cb?.tripOnContent?.join("\n") ?? "",
+      cbCooldownSeconds: cb?.cooldownSeconds ?? 60,
     });
     setProviderOpen(true);
   };
@@ -193,6 +212,19 @@ export default function ProvidersPage() {
         type: providerForm.type,
         name: providerForm.name || undefined,
         active: providerForm.active,
+        circuitBreaker: {
+          enabled: providerForm.cbEnabled,
+          failureThreshold: providerForm.cbFailureThreshold,
+          failureStatusCodes: providerForm.cbFailureStatusCodes
+            .split(",")
+            .map((s) => parseInt(s.trim(), 10))
+            .filter((n) => !isNaN(n)),
+          tripOnContent: providerForm.cbTripOnContent
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          cooldownSeconds: providerForm.cbCooldownSeconds,
+        },
       };
       if (providerForm.type === "sse" || providerForm.type === "http") {
         data.url = providerForm.url;
@@ -255,6 +287,7 @@ export default function ProvidersPage() {
       url: profile.url || "",
       headers: profile.headers ? { ...profile.headers } : {},
       env: profile.env ? { ...profile.env } : {},
+      monthlyBudget: profile.monthlyBudget ?? 0,
     });
     setProfileOpen(true);
   };
@@ -265,6 +298,7 @@ export default function ProvidersPage() {
     try {
       const data: Record<string, unknown> = {
         active: profileForm.active,
+        monthlyBudget: profileForm.monthlyBudget || 0,
       };
       if (providerType === "sse" || providerType === "http") {
         if (profileForm.url) data.url = profileForm.url;
@@ -430,6 +464,7 @@ export default function ProvidersPage() {
                         <TableHead>{t("providers.config")}</TableHead>
                         <TableHead className="text-right">{t("providers.calls")}</TableHead>
                         <TableHead className="text-right">{t("providers.cost")}</TableHead>
+                        <TableHead className="text-right">{t("providers.budget")}</TableHead>
                         <TableHead className="w-[80px]"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -483,6 +518,19 @@ export default function ProvidersPage() {
                           </TableCell>
                           <TableCell className="text-right text-sm">
                             {(profileStatsMap[p.key]?.[profile.key]?.cost ?? 0).toFixed(4)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {profile.monthlyBudget && profile.monthlyBudget > 0 ? (
+                              <span className={
+                                (profileStatsMap[p.key]?.[profile.key]?.cost ?? 0) >= profile.monthlyBudget
+                                  ? "text-destructive font-medium"
+                                  : ""
+                              }>
+                                {profile.monthlyBudget}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">{t("common.unlimited")}</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -636,6 +684,80 @@ export default function ProvidersPage() {
               />
               <Label>{t("providers.activeLabel")}</Label>
             </div>
+
+            {/* Circuit Breaker */}
+            <div className="border rounded-md p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={providerForm.cbEnabled}
+                  onCheckedChange={(checked) =>
+                    setProviderForm({ ...providerForm, cbEnabled: checked })
+                  }
+                />
+                <Label className="font-medium">{t("providers.cb.enabled")}</Label>
+              </div>
+              {providerForm.cbEnabled && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("providers.cb.failureThreshold")}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={providerForm.cbFailureThreshold}
+                        onChange={(e) =>
+                          setProviderForm({
+                            ...providerForm,
+                            cbFailureThreshold: parseInt(e.target.value, 10) || 0,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("providers.cb.cooldownSeconds")}</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={providerForm.cbCooldownSeconds}
+                        onChange={(e) =>
+                          setProviderForm({
+                            ...providerForm,
+                            cbCooldownSeconds: parseInt(e.target.value, 10) || 60,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("providers.cb.failureStatusCodes")}</Label>
+                    <Input
+                      value={providerForm.cbFailureStatusCodes}
+                      onChange={(e) =>
+                        setProviderForm({
+                          ...providerForm,
+                          cbFailureStatusCodes: e.target.value,
+                        })
+                      }
+                      placeholder="429, 500, 502, 503"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("providers.cb.tripOnContent")}</Label>
+                    <Textarea
+                      value={providerForm.cbTripOnContent}
+                      onChange={(e) =>
+                        setProviderForm({
+                          ...providerForm,
+                          cbTripOnContent: e.target.value,
+                        })
+                      }
+                      placeholder={t("providers.cb.tripOnContentPlaceholder")}
+                      rows={3}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProviderOpen(false)}>
@@ -713,6 +835,22 @@ export default function ProvidersPage() {
                   valuePlaceholder={t("providers.varValuePlaceholder")}
                 />
               )}
+            <div className="space-y-2">
+              <Label>{t("providers.monthlyBudget")}</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={profileForm.monthlyBudget || ""}
+                onChange={(e) =>
+                  setProfileForm({
+                    ...profileForm,
+                    monthlyBudget: parseFloat(e.target.value) || 0,
+                  })
+                }
+                placeholder={t("providers.monthlyBudgetPlaceholder")}
+              />
+            </div>
             <div className="flex items-center gap-2">
               <Switch
                 checked={profileForm.active}

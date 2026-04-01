@@ -71,6 +71,15 @@ export interface McpProfile {
   url?: string;
   headers?: Record<string, string>;
   env?: Record<string, string>;
+  monthlyBudget?: number;
+}
+
+export interface CircuitBreakerConfig {
+  enabled: boolean;
+  failureThreshold: number;
+  failureStatusCodes: number[];
+  tripOnContent: string[];
+  cooldownSeconds: number;
 }
 
 export interface McpProvider {
@@ -81,6 +90,7 @@ export interface McpProvider {
   url?: string;
   command?: string;
   args?: string[];
+  circuitBreaker?: CircuitBreakerConfig;
   tools: string[];
   schemaErrors: string[];
   mismatchedTools: string[];

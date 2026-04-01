@@ -464,6 +464,16 @@ export class PostgresStorage implements IStorage {
     }));
   }
 
+  async getProfileMonthlyCost(providerKey: string, profileKey: string, billingMonth: string): Promise<number> {
+    const { rows } = await this.pool.query(
+      `SELECT COALESCE(SUM(cost), 0)::float as total_cost
+       FROM request_logs
+       WHERE provider_key = $1 AND profile_key = $2 AND created_at >= ($3 || '-01')::date AND created_at < (($3 || '-01')::date + interval '1 month')`,
+      [providerKey, profileKey, billingMonth]
+    );
+    return (rows[0]?.total_cost as number) ?? 0;
+  }
+
   // --- Tool Pricing ---
 
   async setToolPrice(providerKey: string, toolName: string, unitPrice: number): Promise<void> {

@@ -11,8 +11,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { logger } from "../logger.js";
 import type { ConnectedClient } from "./client.js";
-import type { ProviderConfig, ProxyConfig } from "../config.js";
-import { mergeProviderProfile } from "../config.js";
+import type { ProviderConfig, ProxyConfig, CircuitBreakerConfig } from "../config.js";
+import { mergeProviderProfile, getMcpServersConfig } from "../config.js";
 import type { IStorage } from "../storage/interface.js";
 import type { AuthContext } from "../middleware/auth.js";
 
@@ -64,6 +64,84 @@ const toolToClientMap = new Map<string, ToolMapping>();
 const resourceToClientMap = new Map<string, ConnectedClient>();
 const promptToClientMap = new Map<string, ConnectedClient>();
 const providerPools = new Map<string, ProviderPool>();
+
+// --- Circuit Breaker State ---
+
+interface CircuitBreakerState {
+  status: "closed" | "open";
+  failureCount: number;
+  openedAt: number | null;
+}
+
+const circuitBreakerStates = new Map<string, CircuitBreakerState>();
+
+function getCircuitBreakerState(clientName: string): CircuitBreakerState {
+  let state = circuitBreakerStates.get(clientName);
+  if (!state) {
+    state = { status: "closed", failureCount: 0, openedAt: null };
+    circuitBreakerStates.set(clientName, state);
+  }
+  return state;
+}
+
+function isCircuitOpen(clientName: string, config: CircuitBreakerConfig): boolean {
+  if (!config.enabled) return false;
+  const state = getCircuitBreakerState(clientName);
+  if (state.status !== "open") return false;
+  // Auto-recover after cooldown
+  if (state.openedAt && Date.now() - state.openedAt > config.cooldownSeconds * 1000) {
+    state.status = "closed";
+    state.failureCount = 0;
+    state.openedAt = null;
+    logger.log(`Circuit breaker auto-recovered for ${clientName}`);
+    return false;
+  }
+  return true;
+}
+
+function tripCircuitBreaker(clientName: string): void {
+  const state = getCircuitBreakerState(clientName);
+  state.status = "open";
+  state.openedAt = Date.now();
+  logger.warn(`Circuit breaker tripped for ${clientName}`);
+}
+
+function recordCircuitBreakerFailure(clientName: string, config: CircuitBreakerConfig): void {
+  const state = getCircuitBreakerState(clientName);
+  state.failureCount++;
+  if (config.failureThreshold > 0 && state.failureCount >= config.failureThreshold) {
+    tripCircuitBreaker(clientName);
+  }
+}
+
+function resetCircuitBreakerFailures(clientName: string): void {
+  const state = circuitBreakerStates.get(clientName);
+  if (state) {
+    state.failureCount = 0;
+  }
+}
+
+function checkCircuitBreakerError(errorMsg: string, config: CircuitBreakerConfig): "trip" | "failure" | null {
+  if (!config.enabled) return null;
+  const msgLower = errorMsg.toLowerCase();
+  // Immediate trip on content match
+  if (config.tripOnContent.length > 0) {
+    for (const pattern of config.tripOnContent) {
+      if (msgLower.includes(pattern.toLowerCase())) {
+        return "trip";
+      }
+    }
+  }
+  // Count-based failure on status code match
+  if (config.failureStatusCodes.length > 0) {
+    for (const code of config.failureStatusCodes) {
+      if (msgLower.includes(String(code))) {
+        return "failure";
+      }
+    }
+  }
+  return null;
+}
 
 let currentProxyConfig: Omit<ProxyConfig, "serverToolnameSeparator"> = {
   retrySseToolCall: true,
@@ -474,10 +552,44 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
       }
     }
 
+    // Filter out clients: monthly budget exceeded or circuit breaker open
+    let availableClients = pool.clients;
+    const mcpConfig = getMcpServersConfig();
+    const providerConfig = mcpConfig.mcpProviders?.[mapping.providerKey];
+    const cbConfig = providerConfig?.circuitBreaker;
+
+    // Circuit breaker filter (in-memory, no async needed)
+    if (cbConfig?.enabled) {
+      availableClients = availableClients.filter(
+        (client) => !isCircuitOpen(client.name, cbConfig)
+      );
+    }
+
+    // Monthly budget filter
+    if (gStorage && availableClients.length > 0) {
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const budgetChecks = await Promise.all(
+        availableClients.map(async (client) => {
+          const profileConfig = providerConfig?.profiles?.[client.profileKey];
+          const budget = profileConfig?.monthlyBudget;
+          if (budget && budget > 0) {
+            const cost = await gStorage!.getProfileMonthlyCost(client.providerKey, client.profileKey, currentMonth);
+            return cost < budget;
+          }
+          return true;
+        })
+      );
+      availableClients = availableClients.filter((_, i) => budgetChecks[i]);
+    }
+
+    if (availableClients.length === 0) {
+      throw new Error("No available profiles (all are over budget or circuit-broken)");
+    }
+
     // Select client via round-robin
-    const clientIndex = pool.roundRobinIndex % pool.clients.length;
+    const clientIndex = pool.roundRobinIndex % availableClients.length;
     pool.roundRobinIndex++;
-    let selectedClient = pool.clients[clientIndex];
+    let selectedClient = availableClients[clientIndex];
 
     // Retry config based on transport type
     const retryEnabled =
@@ -563,10 +675,39 @@ export async function setupMcpProxy(options?: McpProxyOptions): Promise<Server> 
           }).catch((e: any) => logger.error(`Failed to get tool price: ${e.message}`));
         }
 
+        // Check MCP-level isError responses for circuit breaker content matching
+        if (cbConfig?.enabled && result && (result as any).isError) {
+          const texts = ((result as any).content ?? [])
+            .filter((c: any) => c.type === "text")
+            .map((c: any) => c.text)
+            .join(" ");
+          if (texts) {
+            const cbResult = checkCircuitBreakerError(texts, cbConfig);
+            if (cbResult === "trip") {
+              tripCircuitBreaker(selectedClient.name);
+            } else if (cbResult === "failure") {
+              recordCircuitBreakerFailure(selectedClient.name, cbConfig);
+            }
+          }
+        } else {
+          // Successful non-error response: reset failure count
+          resetCircuitBreakerFailures(selectedClient.name);
+        }
+
         return result;
       } catch (error: any) {
         lastError = error;
         logger.warn(`Tool call attempt ${attempt + 1} failed for ${name} via ${selectedClient.name}: ${error.message}`);
+
+        // Update circuit breaker state on error
+        if (cbConfig?.enabled) {
+          const cbResult = checkCircuitBreakerError(error.message ?? "", cbConfig);
+          if (cbResult === "trip") {
+            tripCircuitBreaker(selectedClient.name);
+          } else if (cbResult === "failure") {
+            recordCircuitBreakerFailure(selectedClient.name, cbConfig);
+          }
+        }
 
         if (!retryEnabled || !isConnectionError(error)) {
           logger.error(`Non-retryable error for ${name}: ${error.message}`);

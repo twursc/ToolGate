@@ -65,6 +65,7 @@ export function createProvidersRouter() {
                 url: profile.url,
                 headers: profile.headers,
                 env: profile.env,
+                monthlyBudget: profile.monthlyBudget ?? 0,
               };
             }
           );
@@ -77,6 +78,7 @@ export function createProvidersRouter() {
             url: provider.url,
             command: provider.command,
             args: provider.args,
+            circuitBreaker: provider.circuitBreaker,
             tools,
             schemaErrors,
             mismatchedTools,

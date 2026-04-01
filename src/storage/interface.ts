@@ -264,6 +264,7 @@ export interface IStorage {
 
   // Profile stats
   getProfileStats(providerKey: string, billingMonth: string): Promise<{ profileKey: string; count: number; totalCost: number }[]>;
+  getProfileMonthlyCost(providerKey: string, profileKey: string, billingMonth: string): Promise<number>;
 
   // Tool pricing
   setToolPrice(providerKey: string, toolName: string, unitPrice: number): Promise<void>;

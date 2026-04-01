@@ -102,6 +102,7 @@ export type McpServerConfig = StdioServerConfig | SseServerConfig | HttpServerCo
 
 export interface ProfileConfig {
   active?: boolean;
+  monthlyBudget?: number; // 0 or undefined = unlimited
   // SSE/HTTP profile overrides
   url?: string;
   apiKey?: string;
@@ -109,6 +110,14 @@ export interface ProfileConfig {
   headers?: Record<string, string>;
   // Stdio profile overrides
   env?: Record<string, string>;
+}
+
+export interface CircuitBreakerConfig {
+  enabled: boolean;
+  failureThreshold: number;     // trip after N failures, 0 = don't check count
+  failureStatusCodes: number[]; // HTTP status codes to monitor, e.g. [429, 500, 503]
+  tripOnContent: string[];      // trip immediately if error contains any of these strings
+  cooldownSeconds: number;      // how long the circuit stays open before auto-recovery
 }
 
 export interface ProviderConfig {
@@ -120,6 +129,8 @@ export interface ProviderConfig {
   // Stdio base
   command?: string;
   args?: string[];
+  // Circuit breaker
+  circuitBreaker?: CircuitBreakerConfig;
   // Profiles
   profiles: Record<string, ProfileConfig>;
 }
